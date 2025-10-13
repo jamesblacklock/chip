@@ -41,6 +41,8 @@ struct {
   VkSemaphore sig_rendered[MAX_FRAMES_IN_FLIGHT];
   VkFence fence[MAX_FRAMES_IN_FLIGHT];
   size_t frame_index;
+  VkBuffer vbuf;
+  VkDeviceMemory vbuf_mem;
 } Vulkan;
 
 void set_key_state(size_t key, bool state) {
@@ -75,6 +77,8 @@ void cleanup() {
   vkDestroyPipeline(Vulkan.device, Vulkan.pipeline, NULL);
   vkDestroyRenderPass(Vulkan.device, Vulkan.render_pass, NULL);
   cleanup_swapchain();
+  vkDestroyBuffer(Vulkan.device, Vulkan.vbuf, NULL);
+  vkFreeMemory(Vulkan.device, Vulkan.vbuf_mem, NULL);
   vkDestroyPipelineLayout(Vulkan.device, Vulkan.pipeline_layout, NULL);
   vkDestroyRenderPass(Vulkan.device, Vulkan.render_pass, NULL);
   vkDestroyDevice(Vulkan.device, NULL);
@@ -266,6 +270,15 @@ bool create_swapchain() {
   return true;
 }
 
+int32_t find_memory_type(VkPhysicalDeviceMemoryProperties mem_props, uint32_t filter, VkMemoryPropertyFlags properties) {
+  for (uint32_t i = 0; i < mem_props.memoryTypeCount; i++) {
+    if (filter & (1 << i) && (mem_props.memoryTypes[i].propertyFlags & properties)) {
+        return i;
+    }
+  }
+  return -1;
+}
+
 bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, uint32_t fb_height) {
   Vulkan.surface = surface;
   Vulkan.fb_width = fb_width;
@@ -370,10 +383,33 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     .pDynamicStates = dynamic_state_info,
   };
 
+  VkVertexInputBindingDescription input_desc = {
+    .binding = 0,
+    .stride = sizeof(float) * 5,
+    .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
+  };
+
+  VkVertexInputAttributeDescription attr_desc[] = {
+    {
+      .binding = 0,
+      .location = 0,
+      .format = VK_FORMAT_R32G32_SFLOAT,
+      .offset = 0,
+    },
+    {
+      .binding = 0,
+      .location = 1,
+      .format = VK_FORMAT_R32G32B32_SFLOAT,
+      .offset = sizeof(float) * 2,
+    },
+  };
+
   VkPipelineVertexInputStateCreateInfo vertex_input_info = {
     .sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-    .vertexBindingDescriptionCount = 0,
-    .vertexAttributeDescriptionCount = 0,
+    .vertexBindingDescriptionCount = 1,
+    .pVertexBindingDescriptions = &input_desc,
+    .vertexAttributeDescriptionCount = 2,
+    .pVertexAttributeDescriptions = attr_desc
   };
 
   VkPipelineInputAssemblyStateCreateInfo input_assembly = {
@@ -559,6 +595,41 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     }
   }
 
+  VkBufferCreateInfo vbuf_info = {
+    .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+    .size = sizeof(float) * 5 * 3,
+    .usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+    .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
+  };
+  if (vkCreateBuffer(Vulkan.device, &vbuf_info, NULL, &Vulkan.vbuf) != VK_SUCCESS) {
+    fprintf(stderr, "failed to vertex buffer\n");
+    return false;
+  }
+
+  VkMemoryRequirements vbuf_mem_req;
+  vkGetBufferMemoryRequirements(Vulkan.device, Vulkan.vbuf, &vbuf_mem_req);
+  VkPhysicalDeviceMemoryProperties mem_props;
+  vkGetPhysicalDeviceMemoryProperties(Vulkan.physical_device, &mem_props);
+
+  int32_t mem_type_index = find_memory_type(
+    mem_props, vbuf_mem_req.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+  );
+  if (mem_type_index < 0) {
+    fprintf(stderr, "no available memory type for vertex buffer\n");
+    return false;
+  }
+
+  VkMemoryAllocateInfo vbuf_alloc_info = {
+    .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+    .allocationSize = vbuf_mem_req.size,
+    .memoryTypeIndex = mem_type_index,
+  };
+  if (vkAllocateMemory(Vulkan.device, &vbuf_alloc_info, NULL, &Vulkan.vbuf_mem) != VK_SUCCESS) {
+    fprintf(stderr, "failed to allocate vertex buffer memory\n");
+    return false;
+  }
+  vkBindBufferMemory(Vulkan.device, Vulkan.vbuf, Vulkan.vbuf_mem, 0);
+
   return true;
 }
 
@@ -568,7 +639,27 @@ VkQueue get_graphics_queue() {
   return queue;
 }
 
-void render() {
+#include <math.h>
+
+void render(size_t ms) {
+  static size_t n = 0;
+  n = (ms + n) % 2000;
+
+  float x = cos(((double) n) / 2000 * (M_PI * 2)) * 0.5;
+  float a = 0.5 + cos(((double) n) / 2000 * (M_PI * 2) +      0) / 2;
+  float b = 0.5 + cos(((double) n) / 2000 * (M_PI * 2) + M_PI/2) / 2;
+  float c = 0.5 + cos(((double) n) / 2000 * (M_PI * 2) +   M_PI) / 2;
+
+  float vector_data[] = {
+    -0.5,  0.5,      a, b, c,
+       x, -0.5,      b, c, a,
+     0.5,  0.5,      c, a, b,
+  };
+  void* data;
+  vkMapMemory(Vulkan.device, Vulkan.vbuf_mem, 0, sizeof(vector_data), 0, &data);
+  memcpy(data, &vector_data, sizeof(vector_data));
+  vkUnmapMemory(Vulkan.device, Vulkan.vbuf_mem);
+
   VkFence fence = Vulkan.fence[Vulkan.frame_index];
   VkSemaphore sig_ready = Vulkan.sig_ready[Vulkan.frame_index];
   VkSemaphore sig_rendered = Vulkan.sig_rendered[Vulkan.frame_index];
@@ -605,6 +696,9 @@ void render() {
   };
   vkCmdBeginRenderPass(command_buffer, &pass_info, VK_SUBPASS_CONTENTS_INLINE);
   vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Vulkan.pipeline);
+
+  VkDeviceSize vbuf_offsets = {0};
+  vkCmdBindVertexBuffers(command_buffer, 0, 1, &Vulkan.vbuf, &vbuf_offsets);
 
   VkViewport viewport = {
     .x = 0.0f,
@@ -660,15 +754,8 @@ bool step(size_t ms) {
     return false;
   }
 
-  render();
+  render(keys[KEY_SPACE] ? ms : 0);
 
-  if (keys[KEY_LALT] && !thing) {
-    printf("%ld yes\n", ms);
-    thing = true;
-  } else if (!keys[KEY_LALT] && thing) {
-    printf("%ld no\n", ms);
-    thing = false;
-  }
   if (keys[KEY_LMETA] && (keys[KEY_Q] || keys[KEY_W])) {
     quit = true;
   }
