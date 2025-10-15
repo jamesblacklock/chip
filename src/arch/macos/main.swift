@@ -4,7 +4,7 @@ func handleKey(_ event: NSEvent) {
   if event.isARepeat { return }
   // print("macOS code:", event.keyCode)
   // print("ascii:", event.characters?.first?.asciiValue)
-  let keyDown: UInt8 = event.type == .keyDown ? 1 : 0
+  let keyDown = event.type == .keyDown
   switch event.keyCode {
     case 29: set_key_state(Int(KEY_0), keyDown)
     case 18: set_key_state(Int(KEY_1), keyDown)
@@ -98,29 +98,29 @@ class GameView: NSView {
     // print(event)
     switch event.keyCode {
       case 56:
-        set_key_state(Int(KEY_LSHIFT), keyLshift ? 0 : 1)
         keyLshift = !keyLshift
+        set_key_state(Int(KEY_LSHIFT), keyLshift)
       case 60:
-        set_key_state(Int(KEY_RSHIFT), keyRshift ? 0 : 1)
         keyRshift = !keyRshift
+        set_key_state(Int(KEY_RSHIFT), keyRshift)
       case 59:
-        set_key_state(Int(KEY_LCTRL), keyLctrl ? 0 : 1)
         keyLctrl = !keyLctrl
+        set_key_state(Int(KEY_LCTRL), keyLctrl)
       case 62:
-        set_key_state(Int(KEY_RCTRL), keyRctrl ? 0 : 1)
         keyRctrl = !keyRctrl
+        set_key_state(Int(KEY_RCTRL), keyRctrl)
       case 55:
-        set_key_state(Int(KEY_LMETA), keyLmeta ? 0 : 1)
         keyLmeta = !keyLmeta
+        set_key_state(Int(KEY_LMETA), keyLmeta)
       case 54:
-        set_key_state(Int(KEY_RMETA), keyRmeta ? 0 : 1)
         keyRmeta = !keyRmeta
+        set_key_state(Int(KEY_RMETA), keyRmeta)
       case 58:
-        set_key_state(Int(KEY_LALT), keyLalt ? 0 : 1)
         keyLalt = !keyLalt
+        set_key_state(Int(KEY_LALT), keyLalt)
       case 61:
-        set_key_state(Int(KEY_RALT), keyRalt ? 0 : 1)
         keyRalt = !keyRalt
+        set_key_state(Int(KEY_RALT), keyRalt)
       default: break;
     }
   }
@@ -201,7 +201,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     if vkCreateMacOSSurfaceMVK(vkInst, &surfaceInfo, nil, &surface) == VK_SUCCESS, let surface = surface {
       print("Vulkan surface created")
       vkSurface = surface
-      if init_vulkan(vkInst, vkSurface, fbWidth, fbHeight) == 0 {
+      if !init_vulkan(vkInst, vkSurface, fbWidth, fbHeight) {
         NSApp.terminate(self)
         return
       }
@@ -223,7 +223,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let currentTime = CFAbsoluteTimeGetCurrent()
     let deltaTime = currentTime - (lastFrameTime ?? currentTime) // Time since last frame (seconds)
     lastFrameTime = currentTime
-    if step(Int(deltaTime * 1000)) == 0 {
+    if !step(Int(deltaTime * 1000)) {
       NSApp.terminate(self)
     }
   }

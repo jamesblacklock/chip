@@ -1,10 +1,12 @@
-#include "main.h"
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <string.h>
 #include <vulkan/vulkan.h>
+#include <cglm/cglm.h>
+
+#include "main.h"
 
 uint32_t clamp(uint32_t n, uint32_t min, uint32_t max) {
   return n > max ? max : n < min ? min : n;
@@ -17,6 +19,19 @@ bool quit;
 bool thing;
 
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+
+typedef struct Point {
+  vec2 pos;
+  vec3 color;
+} Point;
+
+typedef Point Quad[4];
+
+typedef struct UBO {
+  mat4 model;
+  mat4 view;
+  mat4 proj;
+} UBO;
 
 struct {
   uint32_t graphics_queue_index;
@@ -32,6 +47,7 @@ struct {
   VkImage* swap_images;
   VkImageView* swap_views;
   VkPipelineLayout pipeline_layout;
+  VkDescriptorSetLayout desc_set_layout;
   VkRenderPass render_pass;
   VkPipeline pipeline;
   VkFramebuffer* frame_buffers;
@@ -48,8 +64,13 @@ struct {
   VkDeviceMemory vbuf_stg_mem;
   VkBuffer vbuf_idx;
   VkDeviceMemory vbuf_idx_mem;
+  VkBuffer ubuf[MAX_FRAMES_IN_FLIGHT];
+  VkDeviceMemory ubuf_mem[MAX_FRAMES_IN_FLIGHT];
+  void* ubuf_map[MAX_FRAMES_IN_FLIGHT];
+  VkDescriptorPool desc_pool;
+  VkDescriptorSet desc_set[MAX_FRAMES_IN_FLIGHT];
 } Vulkan = {
-  .vbuf_sz = sizeof(float) * 5 * 4,
+  .vbuf_sz = sizeof(Quad),
 };
 
 void set_key_state(size_t key, bool state) {
@@ -91,6 +112,11 @@ void cleanup() {
   vkDestroyBuffer(Vulkan.device, Vulkan.vbuf_idx, NULL);
   vkFreeMemory(Vulkan.device, Vulkan.vbuf_idx_mem, NULL);
   vkDestroyPipelineLayout(Vulkan.device, Vulkan.pipeline_layout, NULL);
+  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    vkDestroyBuffer(Vulkan.device, Vulkan.ubuf[i], NULL);
+    vkFreeMemory(Vulkan.device, Vulkan.ubuf_mem[i], NULL);
+  }
+  vkDestroyDescriptorSetLayout(Vulkan.device, Vulkan.desc_set_layout, NULL);
   vkDestroyRenderPass(Vulkan.device, Vulkan.render_pass, NULL);
   vkDestroyDevice(Vulkan.device, NULL);
 
@@ -102,7 +128,6 @@ byte* read_file(const char* filename, size_t* size) {
   absolute_path[0] = 0;
   strcat(absolute_path, app_path);
   strcat(absolute_path, filename);
-  // printf("%s\n", app_path);
 
   struct stat info;
   int res = stat(absolute_path, &info);
@@ -533,7 +558,7 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     .polygonMode = VK_POLYGON_MODE_FILL,
     .lineWidth = 1.0f,
     .cullMode = VK_CULL_MODE_BACK_BIT,
-    .frontFace = VK_FRONT_FACE_CLOCKWISE,
+    .frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE,
     .depthBiasEnable = VK_FALSE,
   };
 
@@ -567,10 +592,26 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     .blendConstants = { 0.0f, 0.0f, 0.0f, 0.0f },
   };
 
+  VkDescriptorSetLayoutBinding ubo_layout_binding = {
+    .binding = 0,
+    .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+    .descriptorCount = 1,
+    .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+  };
+  VkDescriptorSetLayoutCreateInfo layout_info = {
+    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+    .bindingCount = 1,
+    .pBindings = &ubo_layout_binding,
+  };
+  if (vkCreateDescriptorSetLayout(Vulkan.device, &layout_info, NULL, &Vulkan.desc_set_layout) != VK_SUCCESS) {
+    fprintf(stderr, "failed to create descriptor set layout\n");
+    return false;
+  }
+
   VkPipelineLayoutCreateInfo pipeline_layout_info = {
     .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-    .setLayoutCount = 0,
-    .pSetLayouts = NULL,
+    .setLayoutCount = 1,
+    .pSetLayouts = &Vulkan.desc_set_layout,
     .pushConstantRangeCount = 0,
     .pPushConstantRanges = NULL,
   };
@@ -620,7 +661,6 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     .dependencyCount = 1,
     .pDependencies = &dep,
   };
-
   if (vkCreateRenderPass(Vulkan.device, &render_pass_create_info, NULL, &Vulkan.render_pass) != VK_SUCCESS) {
     fprintf(stderr, "failed to create render pass\n");
     return false;
@@ -693,7 +733,6 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     return false;
   }
 
-  // uint16_t idx_data[6] = {0, 1, 2, 2, 3, 0};
   uint16_t idx_data[6] = {0, 1, 2, 1, 3, 2};
   VkDeviceSize vbuf_idx_sz = sizeof(idx_data);
   VkDeviceMemory vbuf_idx_stg_mem;
@@ -718,39 +757,76 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
   vkDestroyBuffer(Vulkan.device, vbuf_idx_stg, NULL);
   vkFreeMemory(Vulkan.device, vbuf_idx_stg_mem, NULL);
 
+  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    if (!create_buffer(
+      &Vulkan.ubuf[i],
+      &Vulkan.ubuf_mem[i],
+      sizeof(UBO),
+      VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
+    )) {
+      fprintf(stderr, "failed to create uniform buffers\n");
+    }
+    vkMapMemory(Vulkan.device, Vulkan.ubuf_mem[i], 0, sizeof(UBO), 0, &Vulkan.ubuf_map[i]);
+  }
+
+  VkDescriptorPoolCreateInfo desc_pool_info = {
+    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+    .poolSizeCount = 1,
+    .pPoolSizes = &(VkDescriptorPoolSize) {
+      .type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+      .descriptorCount = MAX_FRAMES_IN_FLIGHT,
+    },
+    .maxSets = MAX_FRAMES_IN_FLIGHT,
+  };
+  if (vkCreateDescriptorPool(Vulkan.device, &desc_pool_info, NULL, &Vulkan.desc_pool) != VK_SUCCESS) {
+    fprintf(stderr, "failed to create descriptor pool\n");
+    return false;
+  }
+
+  VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT] = {Vulkan.desc_set_layout, Vulkan.desc_set_layout};
+  VkDescriptorSetAllocateInfo desc_set_alloc_info = {
+    .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+    .descriptorPool = Vulkan.desc_pool,
+    .descriptorSetCount = MAX_FRAMES_IN_FLIGHT,
+    .pSetLayouts = layouts,
+  };
+  if (vkAllocateDescriptorSets(Vulkan.device, &desc_set_alloc_info, Vulkan.desc_set) != VK_SUCCESS) {
+    fprintf(stderr, "failed to allocate descriptor sets\n");
+  }
+  for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+    VkDescriptorBufferInfo buf_info = {
+      .buffer = Vulkan.ubuf[i],
+      .offset = 0,
+      .range = sizeof(UBO),
+    };
+    VkWriteDescriptorSet desc_write = {
+      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+      .dstSet = Vulkan.desc_set[i],
+      .dstBinding = 0,
+      .dstArrayElement = 0,
+      .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+      .descriptorCount = 1,
+      .pBufferInfo = &buf_info,
+    };
+    vkUpdateDescriptorSets(Vulkan.device, 1, &desc_write, 0, NULL);
+  }
+
   return true;
 }
 
 #include <math.h>
 
 void render(size_t ms) {
+  static float time = 0;
+  time += ((float)ms) / 1000;
+
   static size_t n = 0;
   n = (ms + n) % 2000;
 
-  float angle = ((double) n) / 2000 * (M_PI * 2) - M_PI * 1.25;
-  float x1 = cos(angle - M_PI*0/2) * 0.4;
-  float y1 = sin(angle - M_PI*0/2) * 0.4;
-  float x2 = cos(angle - M_PI*1/2) * 0.4;
-  float y2 = sin(angle - M_PI*1/2) * 0.4;
-  float x3 = cos(angle - M_PI*2/2) * 0.4;
-  float y3 = sin(angle - M_PI*2/2) * 0.4;
-  float x4 = cos(angle - M_PI*3/2) * 0.4;
-  float y4 = sin(angle - M_PI*3/2) * 0.4;
-  float a = 0.5 + cos(((double) n) / 2000 * (M_PI * 2) +      0) / 2.0;
-  float b = 0.5 + cos(((double) n) / 2000 * (M_PI * 2) + M_PI/2) / 2.0;
-  float c = 0.5 + cos(((double) n) / 2000 * (M_PI * 2) +   M_PI) / 2.0;
-
-  float vector_data[] = {
-    x1,y1,      b, c, a,
-    x4,y4,      c, a, b,
-    x2,y2,      a, b, c, 
-    x3,y3,      c, a, b,
-  };
-  void* data;
-  vkMapMemory(Vulkan.device, Vulkan.vbuf_stg_mem, 0, Vulkan.vbuf_sz, 0, &data);
-  memcpy(data, &vector_data, Vulkan.vbuf_sz);
-  vkUnmapMemory(Vulkan.device, Vulkan.vbuf_stg_mem);
-  copy_buffer(Vulkan.vbuf_stg, Vulkan.vbuf, Vulkan.vbuf_sz);
+  float a = 0.5 + cos(time +      0) / 2.0;
+  float b = 0.5 + cos(time + M_PI/2) / 2.0;
+  float c = 0.5 + cos(time +   M_PI) / 2.0;
 
   VkFence fence = Vulkan.fence[Vulkan.frame_index];
   VkSemaphore sig_ready = Vulkan.sig_ready[Vulkan.frame_index];
@@ -762,13 +838,34 @@ void render(size_t ms) {
 
   uint32_t swap_index = 0;
   VkResult acquire_image_res = vkAcquireNextImageKHR(Vulkan.device, Vulkan.swap_chain, UINT64_MAX, sig_ready, VK_NULL_HANDLE, &swap_index);
-  if (acquire_image_res == VK_ERROR_OUT_OF_DATE_KHR) {
+  if (acquire_image_res == VK_ERROR_OUT_OF_DATE_KHR || acquire_image_res == VK_SUBOPTIMAL_KHR) {
     create_swapchain();
-    return;
-  } else if (acquire_image_res != VK_SUCCESS && acquire_image_res != VK_SUBOPTIMAL_KHR) {
-    fprintf(stderr, "failed to acquire swapchain image %d\n", acquire_image_res);
+  } else if (acquire_image_res != VK_SUCCESS) {
+    fprintf(stderr, "failed to acquire swapchain image\n");
     return;
   }
+
+  Quad vector_data = {
+    {{-0.5, 0.5}, {b,c,a}},
+    {{-0.5,-0.5}, {c,a,b}},
+    {{ 0.5, 0.5}, {a,b,c}},
+    {{ 0.5,-0.5}, {c,a,b}},
+  };
+  void* data;
+  vkMapMemory(Vulkan.device, Vulkan.vbuf_stg_mem, 0, Vulkan.vbuf_sz, 0, &data);
+  memcpy(data, &vector_data, Vulkan.vbuf_sz);
+  vkUnmapMemory(Vulkan.device, Vulkan.vbuf_stg_mem);
+  copy_buffer(Vulkan.vbuf_stg, Vulkan.vbuf, Vulkan.vbuf_sz);
+
+  UBO ubo;
+
+  vec3 axis = {1.0f, 1.0f, 1.0f};
+  glm_mat4_identity(ubo.model);
+  glm_rotate(ubo.model, time * glm_rad(90.0f), axis);
+  glm_lookat((vec3){2.0f, 2.0f, 2.0f}, (vec3){0.0f, 0.0f, 0.0f}, (vec3){0.0f, 0.0f, 1.0f}, ubo.view);
+  glm_perspective(glm_rad(45), Vulkan.swap_extent.width / (float) Vulkan.swap_extent.height, 0.1, 10, ubo.proj);
+  ubo.proj[1][1] *= -1;
+  memcpy(Vulkan.ubuf_map[Vulkan.frame_index], &ubo, sizeof(UBO));
 
   vkResetCommandBuffer(command_buffer, 0);
   if (vkBeginCommandBuffer(command_buffer, &(VkCommandBufferBeginInfo) { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO }) != VK_SUCCESS) {
@@ -792,6 +889,7 @@ void render(size_t ms) {
   VkDeviceSize vbuf_offsets = {0};
   vkCmdBindVertexBuffers(command_buffer, 0, 1, &Vulkan.vbuf, &vbuf_offsets);
   vkCmdBindIndexBuffer(command_buffer, Vulkan.vbuf_idx, 0, VK_INDEX_TYPE_UINT16);
+  vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Vulkan.pipeline_layout, 0, 1, &Vulkan.desc_set[Vulkan.frame_index], 0, NULL);
 
   VkViewport viewport = {
     .x = 0.0f,

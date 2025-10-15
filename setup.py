@@ -15,8 +15,8 @@ exe_mod = stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IRO
 def arg(arg: str):
   return arg in sys.argv[1:]
 
-def exec(*cmd: List[str]):
-  res = subprocess.run(cmd, stderr=subprocess.STDOUT)
+def exec(*cmd: List[str], cwd: str | None = None):
+  res = subprocess.run(cmd, stderr=subprocess.STDOUT, cwd=cwd)
   if res.returncode != 0:
     exit(1)
 
@@ -41,6 +41,13 @@ if build:
   Path("./deps/macos/include").mkdir(parents=True, exist_ok=True)
   Path("./deps/tmp").mkdir(parents=True, exist_ok=True)
   Path("./build/macos").mkdir(parents=True, exist_ok=True)
+
+  if not Path("./deps/macos/include/cglm/cglm.h").is_file():
+    if not Path("./deps/macos/cglm").is_dir():
+      exec("git", "clone", "--no-checkout", "--depth=1", "--filter=tree:0", "https://github.com/recp/cglm.git", cwd="./deps/macos")
+      exec("git", "sparse-checkout", "set", "--no-cone", "/include/cglm", cwd="./deps/macos/cglm")
+      exec("git", "checkout", cwd="./deps/macos/cglm")
+    copy_dir_contents("./deps/macos/cglm/include", "./deps/macos/include")
 
   if not Path("./deps/macos/vulkansdk").is_dir():
     if not Path("./deps/tmp/vulkansdk-macOS-1.4.328.1.app").is_dir():

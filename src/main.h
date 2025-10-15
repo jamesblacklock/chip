@@ -2,11 +2,9 @@
 #define MAIN_H
 
 #include <vulkan/vulkan.h>
+#include <stdbool.h>
 
 #define byte unsigned char
-#define bool byte
-#define false (0)
-#define true (1)
 
 #define KEY_LSHIFT 0
 #define KEY_RSHIFT 1

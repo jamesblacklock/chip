@@ -83,6 +83,8 @@
     "filesystem": "c",
     "_types.h": "c",
     "stddef.h": "c",
-    "math.h": "c"
+    "math.h": "c",
+    "stdlib.h": "c",
+    "cglm.h": "c"
   }
 }
