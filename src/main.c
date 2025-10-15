@@ -46,8 +46,10 @@ struct {
   VkDeviceMemory vbuf_mem;
   VkBuffer vbuf_stg;
   VkDeviceMemory vbuf_stg_mem;
+  VkBuffer vbuf_idx;
+  VkDeviceMemory vbuf_idx_mem;
 } Vulkan = {
-  .vbuf_sz = sizeof(float) * 5 * 3,
+  .vbuf_sz = sizeof(float) * 5 * 4,
 };
 
 void set_key_state(size_t key, bool state) {
@@ -86,6 +88,8 @@ void cleanup() {
   vkFreeMemory(Vulkan.device, Vulkan.vbuf_mem, NULL);
   vkDestroyBuffer(Vulkan.device, Vulkan.vbuf_stg, NULL);
   vkFreeMemory(Vulkan.device, Vulkan.vbuf_stg_mem, NULL);
+  vkDestroyBuffer(Vulkan.device, Vulkan.vbuf_idx, NULL);
+  vkFreeMemory(Vulkan.device, Vulkan.vbuf_idx_mem, NULL);
   vkDestroyPipelineLayout(Vulkan.device, Vulkan.pipeline_layout, NULL);
   vkDestroyRenderPass(Vulkan.device, Vulkan.render_pass, NULL);
   vkDestroyDevice(Vulkan.device, NULL);
@@ -323,17 +327,55 @@ bool create_buffer(VkBuffer* buf, VkDeviceMemory* mem, VkDeviceSize size, VkBuff
   return true;
 }
 
+VkQueue get_graphics_queue() {
+  VkQueue queue;
+  vkGetDeviceQueue(Vulkan.device, Vulkan.graphics_queue_index, 0, &queue);
+  return queue;
+}
+
+void copy_buffer(VkBuffer src, VkBuffer dst, VkDeviceSize sz) {
+  VkCommandBufferAllocateInfo alloc_info = {
+    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+    .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+    .commandPool = Vulkan.command_pool,
+    .commandBufferCount = 1,
+  };
+
+  VkCommandBuffer cmd;
+  vkAllocateCommandBuffers(Vulkan.device, &alloc_info, &cmd);
+
+  VkCommandBufferBeginInfo begin_info = {
+    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+    .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+  };
+  vkBeginCommandBuffer(cmd, &begin_info);
+  vkCmdCopyBuffer(cmd, src, dst, 1, &(VkBufferCopy) { .size = sz });
+  vkEndCommandBuffer(cmd);
+
+  VkSubmitInfo submit = {
+    .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+    .commandBufferCount = 1,
+    .pCommandBuffers = &cmd,
+  };
+  VkQueue queue = get_graphics_queue();
+  vkQueueSubmit(queue, 1, &submit, VK_NULL_HANDLE);
+
+  vkQueueWaitIdle(queue);
+  vkFreeCommandBuffers(Vulkan.device, Vulkan.command_pool, 1, &cmd);
+}
+
 bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, uint32_t fb_height) {
   Vulkan.surface = surface;
   Vulkan.fb_width = fb_width;
   Vulkan.fb_height = fb_height;
 
   uint32_t device_count;
-  vkEnumeratePhysicalDevices(instance, &device_count, &Vulkan.physical_device);
+  vkEnumeratePhysicalDevices(instance, &device_count, NULL);
   if (device_count < 1) {
     fprintf(stderr, "no device available\n");
     return false;
   }
+  vkEnumeratePhysicalDevices(instance, &device_count, &Vulkan.physical_device);
 
   uint32_t queue_family_count;
   vkGetPhysicalDeviceQueueFamilyProperties(Vulkan.physical_device, &queue_family_count, NULL);
@@ -651,44 +693,32 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     return false;
   }
 
+  // uint16_t idx_data[6] = {0, 1, 2, 2, 3, 0};
+  uint16_t idx_data[6] = {0, 1, 2, 1, 3, 2};
+  VkDeviceSize vbuf_idx_sz = sizeof(idx_data);
+  VkDeviceMemory vbuf_idx_stg_mem;
+  VkBuffer vbuf_idx_stg;
+  VkBufferUsageFlags vbuf_idx_stg_usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+  VkMemoryPropertyFlags vbuf_idx_stg_mem_props = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+  if (!create_buffer(&vbuf_idx_stg, &vbuf_idx_stg_mem, vbuf_idx_sz, vbuf_idx_stg_usage, vbuf_idx_stg_mem_props)) {
+    return false;
+  }
+
+  VkBufferUsageFlags vbuf_idx_usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+  VkMemoryPropertyFlags vbuf_idx_mem_props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+  if (!create_buffer(&Vulkan.vbuf_idx, &Vulkan.vbuf_idx_mem, vbuf_idx_sz, vbuf_idx_usage, vbuf_idx_mem_props)) {
+    return false;
+  }
+
+  void* data;
+  vkMapMemory(Vulkan.device, vbuf_idx_stg_mem, 0, vbuf_idx_sz, 0, &data);
+  memcpy(data, idx_data, (size_t) vbuf_idx_sz);
+  vkUnmapMemory(Vulkan.device, vbuf_idx_stg_mem);
+  copy_buffer(vbuf_idx_stg, Vulkan.vbuf_idx, vbuf_idx_sz);
+  vkDestroyBuffer(Vulkan.device, vbuf_idx_stg, NULL);
+  vkFreeMemory(Vulkan.device, vbuf_idx_stg_mem, NULL);
+
   return true;
-}
-
-VkQueue get_graphics_queue() {
-  VkQueue queue;
-  vkGetDeviceQueue(Vulkan.device, Vulkan.graphics_queue_index, 0, &queue);
-  return queue;
-}
-
-void copy_buffer(VkBuffer src, VkBuffer dst, VkDeviceSize sz) {
-  VkCommandBufferAllocateInfo alloc_info = {
-    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-    .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-    .commandPool = Vulkan.command_pool,
-    .commandBufferCount = 1,
-  };
-
-  VkCommandBuffer cmd;
-  vkAllocateCommandBuffers(Vulkan.device, &alloc_info, &cmd);
-
-  VkCommandBufferBeginInfo begin_info = {
-    .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-    .flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
-  };
-  vkBeginCommandBuffer(cmd, &begin_info);
-  vkCmdCopyBuffer(cmd, src, dst, 1, &(VkBufferCopy) { .size = sz });
-  vkEndCommandBuffer(cmd);
-
-  VkSubmitInfo submit = {
-    .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
-    .commandBufferCount = 1,
-    .pCommandBuffers = &cmd,
-  };
-  VkQueue queue = get_graphics_queue();
-  vkQueueSubmit(queue, 1, &submit, VK_NULL_HANDLE);
-
-  vkQueueWaitIdle(queue);
-  vkFreeCommandBuffers(Vulkan.device, Vulkan.command_pool, 1, &cmd);
 }
 
 #include <math.h>
@@ -697,15 +727,24 @@ void render(size_t ms) {
   static size_t n = 0;
   n = (ms + n) % 2000;
 
-  float x =       cos(((double) n) / 2000 * (M_PI * 2))          * 0.5;
+  float angle = ((double) n) / 2000 * (M_PI * 2) - M_PI * 1.25;
+  float x1 = cos(angle - M_PI*0/2) * 0.4;
+  float y1 = sin(angle - M_PI*0/2) * 0.4;
+  float x2 = cos(angle - M_PI*1/2) * 0.4;
+  float y2 = sin(angle - M_PI*1/2) * 0.4;
+  float x3 = cos(angle - M_PI*2/2) * 0.4;
+  float y3 = sin(angle - M_PI*2/2) * 0.4;
+  float x4 = cos(angle - M_PI*3/2) * 0.4;
+  float y4 = sin(angle - M_PI*3/2) * 0.4;
   float a = 0.5 + cos(((double) n) / 2000 * (M_PI * 2) +      0) / 2.0;
   float b = 0.5 + cos(((double) n) / 2000 * (M_PI * 2) + M_PI/2) / 2.0;
   float c = 0.5 + cos(((double) n) / 2000 * (M_PI * 2) +   M_PI) / 2.0;
 
   float vector_data[] = {
-    -0.5,  0.5,      a, b, c,
-       x, -0.5,      b, c, a,
-     0.5,  0.5,      c, a, b,
+    x1,y1,      b, c, a,
+    x4,y4,      c, a, b,
+    x2,y2,      a, b, c, 
+    x3,y3,      c, a, b,
   };
   void* data;
   vkMapMemory(Vulkan.device, Vulkan.vbuf_stg_mem, 0, Vulkan.vbuf_sz, 0, &data);
@@ -726,8 +765,8 @@ void render(size_t ms) {
   if (acquire_image_res == VK_ERROR_OUT_OF_DATE_KHR) {
     create_swapchain();
     return;
-  } else if (acquire_image_res != VK_SUCCESS) {
-    fprintf(stderr, "failed to acquire swapchain image\n");
+  } else if (acquire_image_res != VK_SUCCESS && acquire_image_res != VK_SUBOPTIMAL_KHR) {
+    fprintf(stderr, "failed to acquire swapchain image %d\n", acquire_image_res);
     return;
   }
 
@@ -752,6 +791,7 @@ void render(size_t ms) {
 
   VkDeviceSize vbuf_offsets = {0};
   vkCmdBindVertexBuffers(command_buffer, 0, 1, &Vulkan.vbuf, &vbuf_offsets);
+  vkCmdBindIndexBuffer(command_buffer, Vulkan.vbuf_idx, 0, VK_INDEX_TYPE_UINT16);
 
   VkViewport viewport = {
     .x = 0.0f,
@@ -767,7 +807,7 @@ void render(size_t ms) {
     .extent = Vulkan.swap_extent,
   };
   vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-  vkCmdDraw(command_buffer, 3, 1, 0, 0);
+  vkCmdDrawIndexed(command_buffer, 6, 1, 0, 0, 0);
   vkCmdEndRenderPass(command_buffer);
   if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
     fprintf(stderr, "failed to record command buffer\n");

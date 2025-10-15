@@ -82,6 +82,7 @@
     "algorithm": "c",
     "filesystem": "c",
     "_types.h": "c",
-    "stddef.h": "c"
+    "stddef.h": "c",
+    "math.h": "c"
   }
 }
