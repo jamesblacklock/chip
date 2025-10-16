@@ -3,7 +3,7 @@ import AppKit
 func handleKey(_ event: NSEvent) {
   if event.isARepeat { return }
   // print("macOS code:", event.keyCode)
-  // print("ascii:", event.characters?.first?.asciiValue)
+  // print("ascii:", event.characters?.first?.asciiValue ?? "")
   let keyDown = event.type == .keyDown
   switch event.keyCode {
     case 29: set_key_state(Int(KEY_0), keyDown)
@@ -56,6 +56,10 @@ func handleKey(_ event: NSEvent) {
     case 36: set_key_state(Int(KEY_ENTER), keyDown)
     case 51: set_key_state(Int(KEY_BSP), keyDown)
     case 53: set_key_state(Int(KEY_ESC), keyDown)
+    case 123: set_key_state(Int(KEY_LEFT), keyDown)
+    case 124: set_key_state(Int(KEY_RIGHT), keyDown)
+    case 125: set_key_state(Int(KEY_DOWN), keyDown)
+    case 126: set_key_state(Int(KEY_UP), keyDown)
     default: break;
   }
 }

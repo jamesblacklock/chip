@@ -33,6 +33,25 @@ typedef struct UBO {
   mat4 proj;
 } UBO;
 
+typedef struct Color {
+  float r;
+  float g;
+  float b;
+} Color;
+
+typedef struct A {
+  float x;
+  float y;
+  float angle;
+  Color color;
+} A;
+
+const size_t A_COUNT = 2;
+A a[A_COUNT] = {
+  { .x = 0, .y = 0, .angle = 0, .color = {1,0,0} },
+  { .x = 1, .y = 1, .angle = 0, .color = {0,0,1} },
+};
+
 struct {
   uint32_t graphics_queue_index;
   VkPhysicalDevice physical_device;
@@ -62,6 +81,7 @@ struct {
   VkDeviceMemory vbuf_mem;
   VkBuffer vbuf_stg;
   VkDeviceMemory vbuf_stg_mem;
+  void* vbuf_stg_map;
   VkBuffer vbuf_idx;
   VkDeviceMemory vbuf_idx_mem;
   VkBuffer ubuf[MAX_FRAMES_IN_FLIGHT];
@@ -70,7 +90,7 @@ struct {
   VkDescriptorPool desc_pool;
   VkDescriptorSet desc_set[MAX_FRAMES_IN_FLIGHT];
 } Vulkan = {
-  .vbuf_sz = sizeof(Quad),
+  .vbuf_sz = sizeof(Quad) * A_COUNT,
 };
 
 void set_key_state(size_t key, bool state) {
@@ -117,7 +137,6 @@ void cleanup() {
     vkFreeMemory(Vulkan.device, Vulkan.ubuf_mem[i], NULL);
   }
   vkDestroyDescriptorSetLayout(Vulkan.device, Vulkan.desc_set_layout, NULL);
-  vkDestroyRenderPass(Vulkan.device, Vulkan.render_pass, NULL);
   vkDestroyDevice(Vulkan.device, NULL);
 
   printf("cleanup complete\n");
@@ -726,6 +745,7 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
   if (!create_buffer(&Vulkan.vbuf_stg, &Vulkan.vbuf_stg_mem, Vulkan.vbuf_sz, vbuf_stg_usage, vbuf_stg_mem_props)) {
     return false;
   }
+  vkMapMemory(Vulkan.device, Vulkan.vbuf_stg_mem, 0, Vulkan.vbuf_sz, 0, &Vulkan.vbuf_stg_map);
 
   VkBufferUsageFlags vbuf_usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   VkMemoryPropertyFlags vbuf_mem_props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
@@ -765,7 +785,7 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
       VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
       VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
     )) {
-      fprintf(stderr, "failed to create uniform buffers\n");
+      return false;
     }
     vkMapMemory(Vulkan.device, Vulkan.ubuf_mem[i], 0, sizeof(UBO), 0, &Vulkan.ubuf_map[i]);
   }
@@ -817,17 +837,7 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
 
 #include <math.h>
 
-void render(size_t ms) {
-  static float time = 0;
-  time += ((float)ms) / 1000;
-
-  static size_t n = 0;
-  n = (ms + n) % 2000;
-
-  float a = 0.5 + cos(time +      0) / 2.0;
-  float b = 0.5 + cos(time + M_PI/2) / 2.0;
-  float c = 0.5 + cos(time +   M_PI) / 2.0;
-
+void render() {
   VkFence fence = Vulkan.fence[Vulkan.frame_index];
   VkSemaphore sig_ready = Vulkan.sig_ready[Vulkan.frame_index];
   VkSemaphore sig_rendered = Vulkan.sig_rendered[Vulkan.frame_index];
@@ -845,24 +855,29 @@ void render(size_t ms) {
     return;
   }
 
-  Quad vector_data = {
-    {{-0.5, 0.5}, {b,c,a}},
-    {{-0.5,-0.5}, {c,a,b}},
-    {{ 0.5, 0.5}, {a,b,c}},
-    {{ 0.5,-0.5}, {c,a,b}},
+  void* p = Vulkan.vbuf_stg_map;
+  for (size_t i; i < A_COUNT; i++) {
+    Quad vector_data = {
+      {{-0.2,+0.2}, {a[i].color.r,a[i].color.g,a[i].color.g}},
+      {{-0.2,-0.2}, {a[i].color.r,a[i].color.g,a[i].color.g}},
+      {{+0.2,+0.2}, {a[i].color.r,a[i].color.g,a[i].color.g}},
+      {{+0.2,-0.2}, {a[i].color.r,a[i].color.g,a[i].color.g}},
+    };
+    memcpy(p, &vector_data, sizeof(Quad));
+    p += sizeof(Quad);
   };
-  void* data;
-  vkMapMemory(Vulkan.device, Vulkan.vbuf_stg_mem, 0, Vulkan.vbuf_sz, 0, &data);
-  memcpy(data, &vector_data, Vulkan.vbuf_sz);
-  vkUnmapMemory(Vulkan.device, Vulkan.vbuf_stg_mem);
   copy_buffer(Vulkan.vbuf_stg, Vulkan.vbuf, Vulkan.vbuf_sz);
 
   UBO ubo;
 
-  vec3 axis = {1.0f, 1.0f, 1.0f};
+  vec3 axis = {0,0,1};
   glm_mat4_identity(ubo.model);
-  glm_rotate(ubo.model, time * glm_rad(90.0f), axis);
-  glm_lookat((vec3){2.0f, 2.0f, 2.0f}, (vec3){0.0f, 0.0f, 0.0f}, (vec3){0.0f, 0.0f, 1.0f}, ubo.view);
+  glm_mat4_identity(ubo.proj);
+  glm_mat4_identity(ubo.view);
+  glm_translate(ubo.model, (vec3){a[0].x,-a[0].y,0});
+  glm_rotate(ubo.model, glm_rad(a[0].angle), axis);
+
+  glm_lookat((vec3){0,0,2}, (vec3){0.0f, 0.0f, 0.0f}, (vec3){0,1,0}, ubo.view);
   glm_perspective(glm_rad(45), Vulkan.swap_extent.width / (float) Vulkan.swap_extent.height, 0.1, 10, ubo.proj);
   ubo.proj[1][1] *= -1;
   memcpy(Vulkan.ubuf_map[Vulkan.frame_index], &ubo, sizeof(UBO));
@@ -945,7 +960,23 @@ bool step(size_t ms) {
     return false;
   }
 
-  render(keys[KEY_SPACE] ? ms : 0);
+  render();
+
+  if (keys[KEY_LEFT]) {
+    a[0].x -= ms / 1000.0;
+  }
+  if (keys[KEY_RIGHT]) {
+    a[0].x += ms / 1000.0;
+  }
+  if (keys[KEY_UP]) {
+    a[0].y -= ms / 1000.0;
+  }
+  if (keys[KEY_DOWN]) {
+    a[0].y += ms / 1000.0;
+  }
+  if (keys[KEY_SPACE]) {
+    a[0].angle += ms * M_PI / 50;
+  }
 
   if (keys[KEY_LMETA] && (keys[KEY_Q] || keys[KEY_W])) {
     quit = true;

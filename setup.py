@@ -87,11 +87,13 @@ if build:
   exec("./deps/macos/vulkansdk/macOS/bin/glslc", "./src/shaders/shader.frag", "-o", "./build/macos/frag.spv")
 
   Path("./build/macos/Game.app/Contents/MacOS").mkdir(parents=True, exist_ok=True)
+  Path("./build/macos/Game.app/Contents/Resources").mkdir(parents=True, exist_ok=True)
 
   shutil.copyfile("./build/macos/game", "./build/macos/Game.app/Contents/MacOS/game")
   shutil.copyfile("./build/macos/frag.spv", "./build/macos/Game.app/Contents/MacOS/frag.spv")
   shutil.copyfile("./build/macos/vert.spv", "./build/macos/Game.app/Contents/MacOS/vert.spv")
   shutil.copyfile("./deps/macos/vulkansdk/macOS/lib/libMoltenVK.dylib", "./build/macos/Game.app/Contents/MacOS/libMoltenVK.dylib")
+  shutil.copyfile("./app_icon.icns", "./build/macos/Game.app/Contents/Resources/app_icon.icns")
 
   os.chmod("./build/macos/game", exe_mod)
   os.chmod("./build/macos/Game.app/Contents/MacOS/game", exe_mod)
@@ -109,6 +111,8 @@ if build:
     <string>Game</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleIconFile</key>
+    <string>app_icon.icns</string>
 </dict>
 </plist>
 """

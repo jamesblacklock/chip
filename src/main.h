@@ -6,15 +6,6 @@
 
 #define byte unsigned char
 
-#define KEY_LSHIFT 0
-#define KEY_RSHIFT 1
-#define KEY_LCTRL 2
-#define KEY_RCTRL 3
-#define KEY_LALT 4
-#define KEY_RALT 5
-#define KEY_LMETA 7
-#define KEY_RMETA 8
-
 #define KEY_TAB 9
 #define KEY_ENTER 13
 #define KEY_ESC 27
@@ -65,6 +56,19 @@
 #define KEY_RBRACK 93
 #define KEY_BACKTICK 96
 #define KEY_BSP 127
+
+#define KEY_LSHIFT 200
+#define KEY_RSHIFT 201
+#define KEY_LCTRL 202
+#define KEY_RCTRL 203
+#define KEY_LALT 204
+#define KEY_RALT 205
+#define KEY_LMETA 207
+#define KEY_RMETA 208
+#define KEY_LEFT 209
+#define KEY_RIGHT 210
+#define KEY_DOWN 211
+#define KEY_UP 212
 
 bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, uint32_t fb_height);
 void set_key_state(size_t key, bool state);
