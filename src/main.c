@@ -41,14 +41,16 @@ typedef struct Color {
 typedef struct A {
   float x;
   float y;
+  float w;
+  float h;
   float angle;
   Color color;
 } A;
 
 const size_t A_COUNT = 2;
 A a[A_COUNT] = {
-  { .x = 0, .y = 0, .angle = 0, .color = {1,0,0} },
-  { .x = 0, .y = 0, .angle = 0, .color = {0,0,1} },
+  { .x = 0, .y = 0, .w = 100, .h = 50, .angle = 0, .color = {1,0,0} },
+  { .x = 0, .y = 0, .w = 50, .h = 100, .angle = 0, .color = {0,0,1} },
 };
 
 struct {
@@ -862,10 +864,10 @@ void render() {
   Quad* p = Vulkan.vbuf_stg_map;
   for (size_t i; i < A_COUNT; i++) {
     Quad vector_data = {
-      {{-0.2,+0.2}, {a[i].color.r,a[i].color.g,a[i].color.b}},
-      {{-0.2,-0.2}, {a[i].color.r,a[i].color.g,a[i].color.b}},
-      {{+0.2,+0.2}, {a[i].color.r,a[i].color.g,a[i].color.b}},
-      {{+0.2,-0.2}, {a[i].color.r,a[i].color.g,a[i].color.b}},
+      {{-a[i].w/1000,+a[i].h/1000}, {a[i].color.r,a[i].color.g,a[i].color.b}},
+      {{-a[i].w/1000,-a[i].h/1000}, {a[i].color.r,a[i].color.g,a[i].color.b}},
+      {{+a[i].w/1000,+a[i].h/1000}, {a[i].color.r,a[i].color.g,a[i].color.b}},
+      {{+a[i].w/1000,-a[i].h/1000}, {a[i].color.r,a[i].color.g,a[i].color.b}},
     };
     memcpy(p, &vector_data, sizeof(Quad));
     p++;
