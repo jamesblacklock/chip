@@ -28,7 +28,6 @@ typedef struct Point {
 typedef Point Quad[4];
 
 typedef struct UBO {
-  mat4 model;
   mat4 view;
   mat4 proj;
 } UBO;
@@ -49,7 +48,7 @@ typedef struct A {
 const size_t A_COUNT = 2;
 A a[A_COUNT] = {
   { .x = 0, .y = 0, .angle = 0, .color = {1,0,0} },
-  { .x = 1, .y = 1, .angle = 0, .color = {0,0,1} },
+  { .x = 0, .y = 0, .angle = 0, .color = {0,0,1} },
 };
 
 struct {
@@ -86,7 +85,7 @@ struct {
   VkDeviceMemory vbuf_idx_mem;
   VkBuffer ubuf[MAX_FRAMES_IN_FLIGHT];
   VkDeviceMemory ubuf_mem[MAX_FRAMES_IN_FLIGHT];
-  void* ubuf_map[MAX_FRAMES_IN_FLIGHT];
+  UBO* ubuf_map[MAX_FRAMES_IN_FLIGHT];
   VkDescriptorPool desc_pool;
   VkDescriptorSet desc_set[MAX_FRAMES_IN_FLIGHT];
 } Vulkan = {
@@ -627,12 +626,17 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     return false;
   }
 
+  VkPushConstantRange pconst_range = {
+    .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+    .offset = 0,
+    .size = sizeof(mat4),
+  };
   VkPipelineLayoutCreateInfo pipeline_layout_info = {
     .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
     .setLayoutCount = 1,
     .pSetLayouts = &Vulkan.desc_set_layout,
-    .pushConstantRangeCount = 0,
-    .pPushConstantRanges = NULL,
+    .pushConstantRangeCount = 1,
+    .pPushConstantRanges = &pconst_range,
   };
 
   if (vkCreatePipelineLayout(Vulkan.device, &pipeline_layout_info, NULL, &Vulkan.pipeline_layout) != VK_SUCCESS) {
@@ -787,7 +791,7 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     )) {
       return false;
     }
-    vkMapMemory(Vulkan.device, Vulkan.ubuf_mem[i], 0, sizeof(UBO), 0, &Vulkan.ubuf_map[i]);
+    vkMapMemory(Vulkan.device, Vulkan.ubuf_mem[i], 0, sizeof(UBO), 0, (void*)&Vulkan.ubuf_map[i]);
   }
 
   VkDescriptorPoolCreateInfo desc_pool_info = {
@@ -855,28 +859,19 @@ void render() {
     return;
   }
 
-  void* p = Vulkan.vbuf_stg_map;
+  Quad* p = Vulkan.vbuf_stg_map;
   for (size_t i; i < A_COUNT; i++) {
     Quad vector_data = {
-      {{-0.2,+0.2}, {a[i].color.r,a[i].color.g,a[i].color.g}},
-      {{-0.2,-0.2}, {a[i].color.r,a[i].color.g,a[i].color.g}},
-      {{+0.2,+0.2}, {a[i].color.r,a[i].color.g,a[i].color.g}},
-      {{+0.2,-0.2}, {a[i].color.r,a[i].color.g,a[i].color.g}},
+      {{-0.2,+0.2}, {a[i].color.r,a[i].color.g,a[i].color.b}},
+      {{-0.2,-0.2}, {a[i].color.r,a[i].color.g,a[i].color.b}},
+      {{+0.2,+0.2}, {a[i].color.r,a[i].color.g,a[i].color.b}},
+      {{+0.2,-0.2}, {a[i].color.r,a[i].color.g,a[i].color.b}},
     };
     memcpy(p, &vector_data, sizeof(Quad));
-    p += sizeof(Quad);
+    p++;
   };
   copy_buffer(Vulkan.vbuf_stg, Vulkan.vbuf, Vulkan.vbuf_sz);
-
   UBO ubo;
-
-  vec3 axis = {0,0,1};
-  glm_mat4_identity(ubo.model);
-  glm_mat4_identity(ubo.proj);
-  glm_mat4_identity(ubo.view);
-  glm_translate(ubo.model, (vec3){a[0].x,-a[0].y,0});
-  glm_rotate(ubo.model, glm_rad(a[0].angle), axis);
-
   glm_lookat((vec3){0,0,2}, (vec3){0.0f, 0.0f, 0.0f}, (vec3){0,1,0}, ubo.view);
   glm_perspective(glm_rad(45), Vulkan.swap_extent.width / (float) Vulkan.swap_extent.height, 0.1, 10, ubo.proj);
   ubo.proj[1][1] *= -1;
@@ -920,7 +915,15 @@ void render() {
     .extent = Vulkan.swap_extent,
   };
   vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-  vkCmdDrawIndexed(command_buffer, 6, 1, 0, 0, 0);
+  for (size_t i = 0; i < 2; i++) {
+    vec3 axis = {0,0,1};
+    mat4 model;
+    glm_mat4_identity(model);
+    glm_translate(model, (vec3){a[i].x,-a[i].y,0});
+    glm_rotate(model, glm_rad(a[i].angle), axis);
+    vkCmdPushConstants(command_buffer, Vulkan.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), &model);
+    vkCmdDrawIndexed(command_buffer, 6, 1, 0, 4 * i, 0);
+  }
   vkCmdEndRenderPass(command_buffer);
   if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
     fprintf(stderr, "failed to record command buffer\n");
@@ -976,6 +979,22 @@ bool step(size_t ms) {
   }
   if (keys[KEY_SPACE]) {
     a[0].angle += ms * M_PI / 50;
+  }
+
+  if (keys[KEY_A]) {
+    a[1].x -= ms / 1000.0;
+  }
+  if (keys[KEY_D]) {
+    a[1].x += ms / 1000.0;
+  }
+  if (keys[KEY_W]) {
+    a[1].y -= ms / 1000.0;
+  }
+  if (keys[KEY_S]) {
+    a[1].y += ms / 1000.0;
+  }
+  if (keys[KEY_LSHIFT]) {
+    a[1].angle += ms * M_PI / 50;
   }
 
   if (keys[KEY_LMETA] && (keys[KEY_Q] || keys[KEY_W])) {
