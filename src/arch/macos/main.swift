@@ -73,6 +73,11 @@ class GameView: NSView {
   var keyRmeta = false
   var keyLalt = false
   var keyRalt = false
+  var mouseX: Float = 0.0;
+  var mouseY: Float = 0.0;
+  var mouseLDown = false;
+  var mouseRDown = false;
+
   override var acceptsFirstResponder: Bool { true } // Allow view to receive key events
 
   override var wantsLayer: Bool {
@@ -92,6 +97,34 @@ class GameView: NSView {
     self.layer!.backgroundColor = CGColor(gray: 0.0, alpha: 1.0)
   }
 
+  override func mouseDown(with event: NSEvent) {
+    mouseLDown = true
+    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown);
+  }
+  override func mouseUp(with event: NSEvent) {
+    mouseLDown = false
+    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown);
+  }
+  override func rightMouseDown(with event: NSEvent) {
+    mouseRDown = true
+    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown);
+  }
+  override func rightMouseUp(with event: NSEvent) {
+    mouseRDown = false
+    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown);
+  }
+  override func mouseMoved(with event: NSEvent) {
+    let pos = event.locationInWindow
+    mouseX = Float(pos.x)
+    mouseY = Float(bounds.height - pos.y)
+    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown);
+  }
+  override func mouseDragged(with event: NSEvent) {
+    let pos = event.locationInWindow
+    mouseX = Float(pos.x)
+    mouseY = Float(bounds.height - pos.y)
+    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown);
+  }
   override func keyDown(with event: NSEvent) {
     handleKey(event)
   }
@@ -149,6 +182,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     )
     window.center()
     window.title = "Game App"
+    window.acceptsMouseMovedEvents = true;
 
     // Set custom view
     let gameView = GameView(frame: window.contentView!.bounds)

@@ -5,6 +5,7 @@
 #include <string.h>
 #include <vulkan/vulkan.h>
 #include <cglm/cglm.h>
+#include <math.h>
 
 #include "main.h"
 
@@ -15,8 +16,11 @@ uint32_t clamp(uint32_t n, uint32_t min, uint32_t max) {
 char* app_path;
 
 bool keys[500] = {};
+float mouse_x;
+float mouse_y;
+bool mouse_left;
+bool mouse_right;
 bool quit;
-bool thing;
 
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
@@ -96,6 +100,12 @@ struct {
 
 void set_key_state(size_t key, bool state) {
   keys[key] = state;
+}
+void set_mouse_state(float x, float y, bool l, bool r) {
+  mouse_x = x;
+  mouse_y = y;
+  mouse_left = l;
+  mouse_right = r;
 }
 
 void set_app_path(const char* path) {
@@ -841,8 +851,6 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
   return true;
 }
 
-#include <math.h>
-
 void render() {
   VkFence fence = Vulkan.fence[Vulkan.frame_index];
   VkSemaphore sig_ready = Vulkan.sig_ready[Vulkan.frame_index];
@@ -917,7 +925,7 @@ void render() {
     .extent = Vulkan.swap_extent,
   };
   vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-  for (size_t i = 0; i < 2; i++) {
+  for (size_t i = 0; i < A_COUNT; i++) {
     vec3 axis = {0,0,1};
     mat4 model;
     glm_mat4_identity(model);
@@ -998,6 +1006,24 @@ bool step(size_t ms) {
   if (keys[KEY_LSHIFT]) {
     a[1].angle += ms * M_PI / 50;
   }
+
+  static bool m = false;
+  static float drag_x;
+  static float drag_y;
+  if (!m && mouse_left) {
+    drag_x = mouse_x;
+    drag_y = mouse_y;
+  }
+  if (mouse_left) {
+    // float x1 = fmin(mouse_x, drag_x);
+    // float x2 = fmax(mouse_x, drag_x);
+    // float y1 = fmin(mouse_y, drag_y);
+    // float y2 = fmax(mouse_y, drag_y);
+    a[1].x = (mouse_x-Vulkan.swap_extent.width/2.0) / (Vulkan.swap_extent.width/2.0);
+    a[1].y = (mouse_y-Vulkan.swap_extent.height/2.0) / (Vulkan.swap_extent.height/2.0);
+    printf("%f %f\n", mouse_x, a[1].x);
+  }
+  m = mouse_left;
 
   if (keys[KEY_LMETA] && (keys[KEY_Q] || keys[KEY_W])) {
     quit = true;

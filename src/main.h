@@ -72,6 +72,7 @@
 
 bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, uint32_t fb_height);
 void set_key_state(size_t key, bool state);
+void set_mouse_state(float x, float y, bool l, bool r);
 void window_closed();
 void cleanup();
 void set_app_path(const char* path);
