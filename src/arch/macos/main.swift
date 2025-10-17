@@ -77,6 +77,7 @@ class GameView: NSView {
   var mouseY: Float = 0.0;
   var mouseLDown = false;
   var mouseRDown = false;
+  var backingScaleFactor: CGFloat = 0;
 
   override var acceptsFirstResponder: Bool { true } // Allow view to receive key events
 
@@ -115,14 +116,14 @@ class GameView: NSView {
   }
   override func mouseMoved(with event: NSEvent) {
     let pos = event.locationInWindow
-    mouseX = Float(pos.x)
-    mouseY = Float(bounds.height - pos.y)
+    mouseX = Float(pos.x * backingScaleFactor - bounds.width / 2)
+    mouseY = Float((bounds.height - pos.y) * backingScaleFactor - bounds.height / 2)
     set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown);
   }
   override func mouseDragged(with event: NSEvent) {
     let pos = event.locationInWindow
-    mouseX = Float(pos.x)
-    mouseY = Float(bounds.height - pos.y)
+    mouseX = Float(pos.x * backingScaleFactor - bounds.width / 2)
+    mouseY = Float((bounds.height - pos.y) * backingScaleFactor - bounds.height / 2)
     set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown);
   }
   override func keyDown(with event: NSEvent) {
@@ -175,7 +176,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     appPath.withCString { set_app_path($0) }
 
     window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 1024, height: 768),
+      contentRect: NSRect(x: 0, y: 0, width: 3000, height: 1300),
       styleMask: [.titled, .closable, .resizable],
       backing: .buffered,
       defer: false
@@ -186,6 +187,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // Set custom view
     let gameView = GameView(frame: window.contentView!.bounds)
+    gameView.backingScaleFactor = window.backingScaleFactor
     window.delegate = self
     window.contentView = gameView
     window.makeFirstResponder(gameView) // Ensure view receives key events

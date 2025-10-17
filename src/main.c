@@ -36,6 +36,8 @@ typedef struct UBO {
   mat4 proj;
 } UBO;
 
+UBO ubo;
+
 typedef struct Color {
   float r;
   float g;
@@ -56,6 +58,8 @@ A a[A_COUNT] = {
   { .x = 0, .y = 0, .w = 100, .h = 50, .angle = 0, .color = {1,0,0} },
   { .x = 0, .y = 0, .w = 50, .h = 100, .angle = 0, .color = {0,0,1} },
 };
+
+float pixart_unit;
 
 struct {
   uint32_t graphics_queue_index;
@@ -423,6 +427,8 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
   Vulkan.surface = surface;
   Vulkan.fb_width = fb_width;
   Vulkan.fb_height = fb_height;
+
+  pixart_unit = round((float) fb_width / (float) fb_height * 1.6279);
 
   uint32_t device_count;
   vkEnumeratePhysicalDevices(instance, &device_count, NULL);
@@ -851,6 +857,19 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
   return true;
 }
 
+void screen_to_world(float x, float y, vec2 dst) {
+  mat4 mat;
+  glm_mat4_mul(ubo.proj, ubo.view, mat);
+  glm_mat4_inv(mat, mat);
+  vec4 vec = {x/(Vulkan.swap_extent.width/2), y/(Vulkan.swap_extent.height/2), 1, 1};
+  glm_mat4_mulv(mat, vec, vec);
+  vec[3] = 1 / vec[3];
+  vec[0] *= vec[3];
+  vec[1] *= vec[3];
+  dst[0] = vec[0];
+  dst[1] = vec[1];
+}
+
 void render() {
   VkFence fence = Vulkan.fence[Vulkan.frame_index];
   VkSemaphore sig_ready = Vulkan.sig_ready[Vulkan.frame_index];
@@ -869,23 +888,24 @@ void render() {
     return;
   }
 
+  glm_mat4_identity(ubo.view);
+  glm_ortho(-1, 1, -1, 1, -1, 1, ubo.proj);
+  memcpy(Vulkan.ubuf_map[Vulkan.frame_index], &ubo, sizeof(UBO));
+
   Quad* p = Vulkan.vbuf_stg_map;
   for (size_t i; i < A_COUNT; i++) {
+    vec2 point = {0};
+    screen_to_world(a[i].w * pixart_unit, a[i].h * pixart_unit, point);
     Quad vector_data = {
-      {{-a[i].w/1000,+a[i].h/1000}, {a[i].color.r,a[i].color.g,a[i].color.b}},
-      {{-a[i].w/1000,-a[i].h/1000}, {a[i].color.r,a[i].color.g,a[i].color.b}},
-      {{+a[i].w/1000,+a[i].h/1000}, {a[i].color.r,a[i].color.g,a[i].color.b}},
-      {{+a[i].w/1000,-a[i].h/1000}, {a[i].color.r,a[i].color.g,a[i].color.b}},
+      {{-point[0]/2,-point[1]/2}, {a[i].color.r,a[i].color.g,a[i].color.b}},
+      {{-point[0]/2, point[1]/2}, {a[i].color.r,a[i].color.g,a[i].color.b}},
+      {{ point[0]/2,-point[1]/2}, {a[i].color.r,a[i].color.g,a[i].color.b}},
+      {{ point[0]/2, point[1]/2}, {a[i].color.r,a[i].color.g,a[i].color.b}},
     };
     memcpy(p, &vector_data, sizeof(Quad));
     p++;
   };
   copy_buffer(Vulkan.vbuf_stg, Vulkan.vbuf, Vulkan.vbuf_sz);
-  UBO ubo;
-  glm_lookat((vec3){0,0,2}, (vec3){0.0f, 0.0f, 0.0f}, (vec3){0,1,0}, ubo.view);
-  glm_perspective(glm_rad(45), Vulkan.swap_extent.width / (float) Vulkan.swap_extent.height, 0.1, 10, ubo.proj);
-  ubo.proj[1][1] *= -1;
-  memcpy(Vulkan.ubuf_map[Vulkan.frame_index], &ubo, sizeof(UBO));
 
   vkResetCommandBuffer(command_buffer, 0);
   if (vkBeginCommandBuffer(command_buffer, &(VkCommandBufferBeginInfo) { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO }) != VK_SUCCESS) {
@@ -926,11 +946,12 @@ void render() {
   };
   vkCmdSetScissor(command_buffer, 0, 1, &scissor);
   for (size_t i = 0; i < A_COUNT; i++) {
-    vec3 axis = {0,0,1};
     mat4 model;
     glm_mat4_identity(model);
-    glm_translate(model, (vec3){a[i].x,-a[i].y,0});
-    glm_rotate(model, glm_rad(a[i].angle), axis);
+    vec3 point = {0};
+    screen_to_world(a[i].x * pixart_unit, a[i].y * pixart_unit, point);
+    glm_translate(model, point);
+    glm_rotate(model, glm_rad(a[i].angle), (vec3){0,0,1});
     vkCmdPushConstants(command_buffer, Vulkan.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), &model);
     vkCmdDrawIndexed(command_buffer, 6, 1, 0, 4 * i, 0);
   }
@@ -976,36 +997,36 @@ bool step(size_t ms) {
   render();
 
   if (keys[KEY_LEFT]) {
-    a[0].x -= ms / 1000.0;
+    a[0].x -= ms / 5;
   }
   if (keys[KEY_RIGHT]) {
-    a[0].x += ms / 1000.0;
+    a[0].x += ms / 5;
   }
   if (keys[KEY_UP]) {
-    a[0].y -= ms / 1000.0;
+    a[0].y -= ms / 5;
   }
   if (keys[KEY_DOWN]) {
-    a[0].y += ms / 1000.0;
+    a[0].y += ms / 5;
   }
-  if (keys[KEY_SPACE]) {
-    a[0].angle += ms * M_PI / 50;
-  }
+  // if (keys[KEY_SPACE]) {
+  //   a[0].angle += ms * M_PI / 50;
+  // }
 
   if (keys[KEY_A]) {
-    a[1].x -= ms / 1000.0;
+    a[1].x -= ms / 5;
   }
   if (keys[KEY_D]) {
-    a[1].x += ms / 1000.0;
+    a[1].x += ms / 5;
   }
   if (keys[KEY_W]) {
-    a[1].y -= ms / 1000.0;
+    a[1].y -= ms / 5;
   }
   if (keys[KEY_S]) {
-    a[1].y += ms / 1000.0;
+    a[1].y += ms / 5;
   }
-  if (keys[KEY_LSHIFT]) {
-    a[1].angle += ms * M_PI / 50;
-  }
+  // if (keys[KEY_LSHIFT]) {
+  //   a[1].angle += ms * M_PI / 50;
+  // }
 
   static bool m = false;
   static float drag_x;
@@ -1015,13 +1036,14 @@ bool step(size_t ms) {
     drag_y = mouse_y;
   }
   if (mouse_left) {
-    // float x1 = fmin(mouse_x, drag_x);
-    // float x2 = fmax(mouse_x, drag_x);
-    // float y1 = fmin(mouse_y, drag_y);
-    // float y2 = fmax(mouse_y, drag_y);
-    a[1].x = (mouse_x-Vulkan.swap_extent.width/2.0) / (Vulkan.swap_extent.width/2.0);
-    a[1].y = (mouse_y-Vulkan.swap_extent.height/2.0) / (Vulkan.swap_extent.height/2.0);
-    printf("%f %f\n", mouse_x, a[1].x);
+    float x1 = fmin(mouse_x, drag_x) / pixart_unit;
+    float x2 = fmax(mouse_x, drag_x) / pixart_unit;
+    float y1 = fmin(mouse_y, drag_y) / pixart_unit;
+    float y2 = fmax(mouse_y, drag_y) / pixart_unit;
+    a[1].w = x2 - x1;
+    a[1].x = x1 + a[1].w/2;
+    a[1].h = y2 - y1;
+    a[1].y = y1 + a[1].h/2;
   }
   m = mouse_left;
 
