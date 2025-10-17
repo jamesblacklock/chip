@@ -49,15 +49,27 @@ typedef struct A {
   float y;
   float w;
   float h;
+  struct { float x; float y; float a; } velocity;
   float angle;
   Color color;
+  bool live;
 } A;
 
-const size_t A_COUNT = 2;
-A a[A_COUNT] = {
-  { .x = 0, .y = 0, .w = 100, .h = 50, .angle = 0, .color = {1,0,0} },
-  { .x = 0, .y = 0, .w = 50, .h = 100, .angle = 0, .color = {0,0,1} },
-};
+const size_t A_COUNT = 1000;
+A a[A_COUNT];
+size_t available[A_COUNT] = {};
+size_t available_idx = A_COUNT - 1;
+
+A* create_a(A new_a) {
+  if (available_idx == 0) {
+    return NULL;
+  }
+  size_t i = available[available_idx--];
+  A* slot = &a[i];
+  new_a.live = true;
+  *slot = new_a;
+  return slot;
+}
 
 float pixart_unit;
 
@@ -424,6 +436,10 @@ void copy_buffer(VkBuffer src, VkBuffer dst, VkDeviceSize sz) {
 }
 
 bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, uint32_t fb_height) {
+  for (size_t i=0; i < A_COUNT; i++) {
+    available[i] = A_COUNT - i - 1;
+  }
+
   Vulkan.surface = surface;
   Vulkan.fb_width = fb_width;
   Vulkan.fb_height = fb_height;
@@ -889,11 +905,15 @@ void render() {
   }
 
   glm_mat4_identity(ubo.view);
-  glm_ortho(-1, 1, -1, 1, -1, 1, ubo.proj);
+  float aspect = Vulkan.swap_extent.width / (float) Vulkan.swap_extent.height;
+  glm_ortho(-aspect, aspect, -1, 1, -1, 1, ubo.proj);
   memcpy(Vulkan.ubuf_map[Vulkan.frame_index], &ubo, sizeof(UBO));
 
   Quad* p = Vulkan.vbuf_stg_map;
   for (size_t i; i < A_COUNT; i++) {
+    if (!a[i].live) {
+      continue;
+    }
     vec2 point = {0};
     screen_to_world(a[i].w * pixart_unit, a[i].h * pixart_unit, point);
     Quad vector_data = {
@@ -996,56 +1016,66 @@ bool step(size_t ms) {
 
   render();
 
-  if (keys[KEY_LEFT]) {
-    a[0].x -= ms / 5;
-  }
-  if (keys[KEY_RIGHT]) {
-    a[0].x += ms / 5;
-  }
-  if (keys[KEY_UP]) {
-    a[0].y -= ms / 5;
-  }
-  if (keys[KEY_DOWN]) {
-    a[0].y += ms / 5;
-  }
-  // if (keys[KEY_SPACE]) {
-  //   a[0].angle += ms * M_PI / 50;
-  // }
-
-  if (keys[KEY_A]) {
-    a[1].x -= ms / 5;
-  }
-  if (keys[KEY_D]) {
-    a[1].x += ms / 5;
-  }
-  if (keys[KEY_W]) {
-    a[1].y -= ms / 5;
-  }
-  if (keys[KEY_S]) {
-    a[1].y += ms / 5;
-  }
-  // if (keys[KEY_LSHIFT]) {
-  //   a[1].angle += ms * M_PI / 50;
-  // }
-
   static bool m = false;
   static float drag_x;
   static float drag_y;
+  static A* bloop = NULL;
   if (!m && mouse_left) {
     drag_x = mouse_x;
     drag_y = mouse_y;
+    m = true;
+    float r = rand() / (float) RAND_MAX;
+    float g = rand() / (float) RAND_MAX;
+    float b = rand() / (float) RAND_MAX;
+    bloop = create_a((A){ .w = 0, .h = 0, .x = drag_x / pixart_unit, .y = drag_y / pixart_unit, .color = {r,g,b} });
   }
-  if (mouse_left) {
+  if (m && mouse_left && bloop) {
     float x1 = fmin(mouse_x, drag_x) / pixart_unit;
     float x2 = fmax(mouse_x, drag_x) / pixart_unit;
     float y1 = fmin(mouse_y, drag_y) / pixart_unit;
     float y2 = fmax(mouse_y, drag_y) / pixart_unit;
-    a[1].w = x2 - x1;
-    a[1].x = x1 + a[1].w/2;
-    a[1].h = y2 - y1;
-    a[1].y = y1 + a[1].h/2;
+    bloop->w = x2 - x1;
+    bloop->x = x1 + bloop->w/2;
+    bloop->h = y2 - y1;
+    bloop->y = y1 + bloop->h/2;
+  }
+  if (!mouse_left) {
+    bloop = NULL;
   }
   m = mouse_left;
+
+  for (size_t i=0; i < A_COUNT; i++) {
+    if (!a[i].live || &a[i] == bloop) {
+      continue;
+    }
+    if (fabsf(a[i].velocity.x) < 0.001) {
+      a[i].velocity.x = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+      a[i].velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+    }
+    if (fabsf(a[i].velocity.y) < 0.001) {
+      a[i].velocity.y = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+      a[i].velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+    }
+    if (a[i].velocity.x > 0 && a[i].x > Vulkan.swap_extent.width/pixart_unit/2) {
+      a[i].velocity.x = -a[i].velocity.x;
+      a[i].velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+    }
+    if (a[i].velocity.x < 0 && -a[i].x > Vulkan.swap_extent.width/pixart_unit/2) {
+      a[i].velocity.x = -a[i].velocity.x;
+      a[i].velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+    }
+    if (a[i].velocity.y > 0 && a[i].y > Vulkan.swap_extent.height/pixart_unit/2) {
+      a[i].velocity.y = -a[i].velocity.y;
+      a[i].velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+    }
+    if (a[i].velocity.y < 0 && -a[i].y > Vulkan.swap_extent.height/pixart_unit/2) {
+      a[i].velocity.y = -a[i].velocity.y;
+      a[i].velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+    }
+    a[i].x += a[i].velocity.x * ms;
+    a[i].y += a[i].velocity.y * ms;
+    a[i].angle += a[i].velocity.a * ms;
+  }
 
   if (keys[KEY_LMETA] && (keys[KEY_Q] || keys[KEY_W])) {
     quit = true;

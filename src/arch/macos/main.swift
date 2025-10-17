@@ -176,7 +176,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     appPath.withCString { set_app_path($0) }
 
     window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 3000, height: 1300),
+      contentRect: NSRect(x: 0, y: 0, width: 1024, height: 768),
       styleMask: [.titled, .closable, .resizable],
       backing: .buffered,
       defer: false
