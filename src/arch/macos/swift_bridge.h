@@ -7,3 +7,4 @@ extern VkResult vkCreateMacOSSurfaceMVK(VkInstance instance, const VkMacOSSurfac
 extern void vkDestroySurfaceKHR(VkInstance instance, VkSurfaceKHR surface, const VkAllocationCallbacks* pAllocator);
 
 #include "../../main.h"
+#include "../../window.h"

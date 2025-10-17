@@ -85,6 +85,11 @@
     "stddef.h": "c",
     "math.h": "c",
     "stdlib.h": "c",
-    "cglm.h": "c"
+    "cglm.h": "c",
+    "stdbool.h": "c",
+    "chipmunk.h": "c",
+    "entity.h": "c",
+    "window.h": "c",
+    "graphics.h": "c"
   }
 }

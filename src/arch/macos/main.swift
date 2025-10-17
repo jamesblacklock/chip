@@ -1,5 +1,11 @@
 import AppKit
 
+func initWrapper(_ appPath: String, _ vkInst: VkInstance, _ vkSurface: VkSurfaceKHR, _ width: UInt32, _ height: UInt32) -> Bool {
+  return appPath.withCString { appPathCString in
+    return `init`(appPathCString, vkInst, vkSurface, width, height)
+  }
+}
+
 func handleKey(_ event: NSEvent) {
   if event.isARepeat { return }
   // print("macOS code:", event.keyCode)
@@ -173,7 +179,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
   func applicationDidFinishLaunching(_ aNotification: Notification) {
     let appPath = "\(Bundle.main.bundlePath)/Contents/MacOS/"
-    appPath.withCString { set_app_path($0) }
 
     window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 1024, height: 768),
@@ -241,7 +246,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     if vkCreateMacOSSurfaceMVK(vkInst, &surfaceInfo, nil, &surface) == VK_SUCCESS, let surface = surface {
       print("Vulkan surface created")
       vkSurface = surface
-      if !init_vulkan(vkInst, vkSurface, fbWidth, fbHeight) {
+      if !initWrapper(appPath, vkInst, vkSurface, fbWidth, fbHeight) {
         NSApp.terminate(self)
         return
       }
@@ -263,7 +268,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let currentTime = CFAbsoluteTimeGetCurrent()
     let deltaTime = currentTime - (lastFrameTime ?? currentTime) // Time since last frame (seconds)
     lastFrameTime = currentTime
-    if !step(Int(deltaTime * 1000)) {
+    if !tick(Int(deltaTime * 1000)) {
       NSApp.terminate(self)
     }
   }

@@ -12,6 +12,14 @@ import stat
 
 exe_mod = stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IROTH
 
+def cc(*cmd: List[str], src: str, build: str):
+  Path(build).mkdir(parents=True, exist_ok=True)
+  c_file_paths = [x for x in Path(src).rglob("*.c")]
+  for f in c_file_paths:
+    c_file = str(f)
+    o_file = Path(build) / f.with_suffix(".o").name
+    exec(*cmd, "-c", c_file, "-o", o_file)
+
 def arg(arg: str):
   return arg in sys.argv[1:]
 
@@ -39,52 +47,79 @@ if clean:
 
 if build:
   Path("./deps/macos/include").mkdir(parents=True, exist_ok=True)
+  Path("./deps/macos/lib").mkdir(parents=True, exist_ok=True)
+  Path("./deps/macos/src").mkdir(parents=True, exist_ok=True)
+  Path("./deps/macos/bin").mkdir(parents=True, exist_ok=True)
   Path("./deps/tmp").mkdir(parents=True, exist_ok=True)
-  Path("./build/macos").mkdir(parents=True, exist_ok=True)
 
-  if not Path("./deps/macos/include/cglm/cglm.h").is_file():
-    if not Path("./deps/macos/cglm").is_dir():
-      exec("git", "clone", "--no-checkout", "--depth=1", "--filter=tree:0", "https://github.com/recp/cglm.git", cwd="./deps/macos")
-      exec("git", "sparse-checkout", "set", "--no-cone", "/include/cglm", cwd="./deps/macos/cglm")
-      exec("git", "checkout", cwd="./deps/macos/cglm")
-    copy_dir_contents("./deps/macos/cglm/include", "./deps/macos/include")
+  # cglm
+  if not Path("./deps/macos/include/cglm").is_dir():
+    if not Path("./deps/macos/src/cglm").is_dir():
+      exec("git", "clone", "--no-checkout", "--depth=1", "--filter=tree:0", "https://github.com/recp/cglm.git", cwd="./deps/macos/src")
+      exec("git", "sparse-checkout", "set", "--no-cone", "/include/cglm", cwd="./deps/macos/src/cglm")
+      exec("git", "checkout", cwd="./deps/macos/src/cglm")
+    copy_dir_contents("./deps/macos/src/cglm/include", "./deps/macos/include")
 
-  if not Path("./deps/macos/vulkansdk").is_dir():
-    if not Path("./deps/tmp/vulkansdk-macOS-1.4.328.1.app").is_dir():
-      if not Path("./deps/tmp/vulkansdk.zip").is_file():
-        urllib.request.urlretrieve("https://sdk.lunarg.com/sdk/download/1.4.328.1/mac/vulkansdk-macos-1.4.328.1.zip", "./deps/tmp/vulkansdk.zip")
-      with zipfile.ZipFile("./deps/tmp/vulkansdk.zip", "r") as archive:
-        archive.extractall("./deps/tmp")
-        archive.close()
-    os.chmod('./deps/tmp/vulkansdk-macOS-1.4.328.1.app/Contents/MacOS/vulkansdk-macOS-1.4.328.1', exe_mod)
-    exec(
-      './deps/tmp/vulkansdk-macOS-1.4.328.1.app/Contents/MacOS/vulkansdk-macOS-1.4.328.1',
-      '--root', f'{Path.cwd() / "deps/macos/vulkansdk"}',
-      '--accept-licenses',
-      '--default-answer',
-      '--confirm-command',
-      'install',
-    )
-  if not Path("./deps/macos/include/vulkan").is_dir():
-    copy_dir_contents("./deps/macos/vulkansdk/macOS/include", "./deps/macos/include")
+  # MoltenVK
+  if not (Path("./deps/macos/include/vulkan").is_dir() and Path("./deps/macos/lib/libMoltenVK.dylib").is_file() and Path("./deps/macos/bin/glslc").is_file()):
+    if not Path("./deps/macos/src/vulkansdk").is_dir():
+      if not Path("./deps/tmp/vulkansdk-macOS-1.4.328.1.app").is_dir():
+        if not Path("./deps/tmp/vulkansdk.zip").is_file():
+          urllib.request.urlretrieve("https://sdk.lunarg.com/sdk/download/1.4.328.1/mac/vulkansdk-macos-1.4.328.1.zip", "./deps/tmp/vulkansdk.zip")
+        with zipfile.ZipFile("./deps/tmp/vulkansdk.zip", "r") as archive:
+          archive.extractall("./deps/tmp")
+          archive.close()
+      os.chmod('./deps/tmp/vulkansdk-macOS-1.4.328.1.app/Contents/MacOS/vulkansdk-macOS-1.4.328.1', exe_mod)
+      exec(
+        './deps/tmp/vulkansdk-macOS-1.4.328.1.app/Contents/MacOS/vulkansdk-macOS-1.4.328.1',
+        '--root', f'{Path.cwd() / "deps/macos/src/vulkansdk"}',
+        '--accept-licenses',
+        '--default-answer',
+        '--confirm-command',
+        'install',
+      )
+    if not Path("./deps/macos/include/vulkan").is_dir():
+      copy_dir_contents("./deps/macos/src/vulkansdk/macOS/include", "./deps/macos/include")
+    if not Path("./deps/macos/lib/libMoltenVK.dylib").is_file():
+      shutil.copyfile("./deps/macos/src/vulkansdk/macOS/lib/libMoltenVK.dylib", "./deps/macos/lib/libMoltenVK.dylib")
+    if not Path("./deps/macos/bin/glslc").is_file():
+      shutil.copyfile("./deps/macos/src/vulkansdk/macOS/bin/glslc", "./deps/macos/bin/glslc")
+      os.chmod("./deps/macos/bin/glslc", exe_mod)
 
-  exec("clang", "-g", "-O0", "-c", "-Ideps/macos/include", "src/main.c", "-o", "./build/macos/main.o")
+  # Chipmunk2D
+  if not (Path("./deps/macos/include/chipmunk").is_dir() and Path("./deps/macos/lib/libchipmunk2d.a").is_file()):
+    if not Path("./deps/macos/src/Chipmunk2D").is_dir():
+      exec("git", "clone", "--no-checkout", "--depth=1", "--filter=tree:0", "https://github.com/slembcke/Chipmunk2D.git", cwd="./deps/macos/src")
+      exec("git", "sparse-checkout", "set", "--no-cone", "/include", "/src", cwd="./deps/macos/src/Chipmunk2D")
+      exec("git", "checkout", cwd="./deps/macos/src/Chipmunk2D")
+      cc("clang", "-fPIC", "-std=gnu99", "-ffast-math", "-O2", "-I./deps/macos/src/Chipmunk2D/include", src="./deps/macos/src/Chipmunk2D/src", build="./deps/macos/src/Chipmunk2D/build")
+      o_files = [str(x.relative_to("./deps/macos/src/Chipmunk2D/build")) for x in Path("./deps/macos/src/Chipmunk2D/build").rglob("*.o")]
+      exec("ar", "rcs", "libchipmunk2d.a", *o_files, cwd="./deps/macos/src/Chipmunk2D/build")
+    if not Path("./deps/macos/include/chipmunk").is_dir():
+      copy_dir_contents("./deps/macos/src/Chipmunk2D/include", "./deps/macos/include")
+    if not Path("./deps/macos/lib/libchipmunk2d.a").is_file():
+      shutil.copyfile("./deps/macos/src/Chipmunk2D/build/libchipmunk2d.a", "./deps/macos/lib/libchipmunk2d.a")
+
+  cc("clang", "-g", "-O0", "-c", "-I./deps/macos/include", src="./src", build="./build/macos")
+  o_files = [str(x) for x in Path("./build/macos").rglob("*.o")]
   exec(
     "swiftc",
     "-import-objc-header", "src/arch/macos/swift_bridge.h",
     "-I", "deps/macos/include",
+    "-L./deps/macos/lib",
     "src/arch/macos/main.swift",
-    "./build/macos/main.o",
-    "./deps/macos/vulkansdk/macOS/lib/libMoltenVK.dylib",
+    *o_files,
+    "./deps/macos/lib/libMoltenVK.dylib",
+    "-lchipmunk2d",
     "-o", "./build/macos/game",
     "-framework", "AppKit",
     "-framework", "Metal",
     "-framework", "QuartzCore",
     "-Xlinker", "-rpath",
-    "-Xlinker", "@executable_path"
+    "-Xlinker", "@executable_path",
   )
-  exec("./deps/macos/vulkansdk/macOS/bin/glslc", "./src/shaders/shader.vert", "-o", "./build/macos/vert.spv")
-  exec("./deps/macos/vulkansdk/macOS/bin/glslc", "./src/shaders/shader.frag", "-o", "./build/macos/frag.spv")
+  exec("./deps/macos/bin/glslc", "./src/shaders/shader.vert", "-o", "./build/macos/vert.spv")
+  exec("./deps/macos/bin/glslc", "./src/shaders/shader.frag", "-o", "./build/macos/frag.spv")
 
   Path("./build/macos/Game.app/Contents/MacOS").mkdir(parents=True, exist_ok=True)
   Path("./build/macos/Game.app/Contents/Resources").mkdir(parents=True, exist_ok=True)
@@ -92,7 +127,7 @@ if build:
   shutil.copyfile("./build/macos/game", "./build/macos/Game.app/Contents/MacOS/game")
   shutil.copyfile("./build/macos/frag.spv", "./build/macos/Game.app/Contents/MacOS/frag.spv")
   shutil.copyfile("./build/macos/vert.spv", "./build/macos/Game.app/Contents/MacOS/vert.spv")
-  shutil.copyfile("./deps/macos/vulkansdk/macOS/lib/libMoltenVK.dylib", "./build/macos/Game.app/Contents/MacOS/libMoltenVK.dylib")
+  shutil.copyfile("./deps/macos/lib/libMoltenVK.dylib", "./build/macos/Game.app/Contents/MacOS/libMoltenVK.dylib")
   shutil.copyfile("./app_icon.icns", "./build/macos/Game.app/Contents/Resources/app_icon.icns")
 
   os.chmod("./build/macos/game", exe_mod)
