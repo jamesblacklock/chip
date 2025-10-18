@@ -114,7 +114,7 @@ bool tick(size_t ms) {
     float b = rand() / (float) RAND_MAX;
     float x = window_to_entity(drag_x);
     float y = window_to_entity(drag_y);
-    bloop = create_entity((Entity){ .w = 0, .h = 0, .x = x, .y = y, .color = {r,g,b} });
+    bloop = create_entity((Entity){ .w = 1, .h = 1, .x = x, .y = y, .color = {r,g,b} });
   }
   if (m && window.mouse_left && bloop) {
     float x1 = window_to_entity(fmin(window.mouse_x, drag_x));
@@ -153,7 +153,7 @@ bool tick(size_t ms) {
   
   // visit_entities(update_entity, &(EntityUpdateData){ .bloop = bloop, .ms = ms });
 
-  b2World_Step(world, 1.0/60.0, 4);
+  b2World_Step(world, 1.0/60.0, 10);
   update_entities();
 
   begin_render();

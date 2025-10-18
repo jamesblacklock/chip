@@ -102,9 +102,6 @@ if build:
       shutil.copyfile("./deps/macos/src/vulkansdk/macOS/bin/glslc", "./deps/macos/bin/glslc")
       os.chmod("./deps/macos/bin/glslc", exe_mod)
 
-  # # Chipmunk2D
-  # build_repo("https://github.com/slembcke/Chipmunk2D.git")
-
   # Box2D
   build_repo("https://github.com/erincatto/box2d.git")
 

@@ -61,11 +61,13 @@ void attach_body(Entity* entity, bool dynamic) {
   b2BodyDef bodyDef = b2DefaultBodyDef();
   bodyDef.type = dynamic ? b2_dynamicBody : b2_staticBody;
   bodyDef.position = (b2Vec2){entity->x+0.1, entity->y};
+  bodyDef.motionLocks = (b2MotionLocks){ .angularZ = true };
   entity->body = b2CreateBody(world, &bodyDef);
   b2Polygon box = b2MakeBox(entity->w/2, entity->h/2);
   b2ShapeDef shapeDef = b2DefaultShapeDef();
   shapeDef.density = 1.0f;
-  shapeDef.material.friction = 0.3f;
+  shapeDef.material.friction = 1;
+  shapeDef.material.restitution = 0;
   b2CreatePolygonShape(entity->body, &shapeDef, &box);
 }
 
