@@ -20,6 +20,22 @@ def cc(*cmd: List[str], src: str, build: str):
     o_file = Path(build) / f.with_suffix(".o").name
     exec(*cmd, "-c", c_file, "-o", o_file)
 
+def build_repo(repo: str):
+  name = Path(repo).stem
+  if not (Path(f"./deps/macos/include/{name}").is_dir() and Path(f"./deps/macos/lib/lib{name}.a").is_file()):
+    if not Path(f"./deps/macos/src/{name}").is_dir():
+      exec("git", "clone", "--no-checkout", "--depth=1", "--filter=tree:0", repo, cwd="./deps/macos/src")
+      exec("git", "sparse-checkout", "set", "--no-cone", "/include", "/src", cwd=f"./deps/macos/src/{name}")
+      exec("git", "checkout", cwd=f"./deps/macos/src/{name}")
+      cc("clang", "-fPIC", "-std=c17", "-ffast-math", "-O2", f"-I./deps/macos/src/{name}/include", src=f"./deps/macos/src/{name}/src", build=f"./deps/macos/src/{name}/build")
+      o_files = [str(x.relative_to(f"./deps/macos/src/{name}/build")) for x in Path(f"./deps/macos/src/{name}/build").rglob("*.o")]
+      exec("ar", "rcs", f"lib{name}.a", *o_files, cwd=f"./deps/macos/src/{name}/build")
+    if not Path(f"./deps/macos/include/{name}").is_dir():
+      copy_dir_contents(f"./deps/macos/src/{name}/include", "./deps/macos/include")
+    if not Path(f"./deps/macos/lib/lib{name}.a").is_file():
+      shutil.copyfile(f"./deps/macos/src/{name}/build/lib{name}.a", f"./deps/macos/lib/lib{name}.a")
+
+
 def arg(arg: str):
   return arg in sys.argv[1:]
 
@@ -87,18 +103,10 @@ if build:
       os.chmod("./deps/macos/bin/glslc", exe_mod)
 
   # Chipmunk2D
-  if not (Path("./deps/macos/include/chipmunk").is_dir() and Path("./deps/macos/lib/libchipmunk2d.a").is_file()):
-    if not Path("./deps/macos/src/Chipmunk2D").is_dir():
-      exec("git", "clone", "--no-checkout", "--depth=1", "--filter=tree:0", "https://github.com/slembcke/Chipmunk2D.git", cwd="./deps/macos/src")
-      exec("git", "sparse-checkout", "set", "--no-cone", "/include", "/src", cwd="./deps/macos/src/Chipmunk2D")
-      exec("git", "checkout", cwd="./deps/macos/src/Chipmunk2D")
-      cc("clang", "-fPIC", "-std=gnu99", "-ffast-math", "-O2", "-I./deps/macos/src/Chipmunk2D/include", src="./deps/macos/src/Chipmunk2D/src", build="./deps/macos/src/Chipmunk2D/build")
-      o_files = [str(x.relative_to("./deps/macos/src/Chipmunk2D/build")) for x in Path("./deps/macos/src/Chipmunk2D/build").rglob("*.o")]
-      exec("ar", "rcs", "libchipmunk2d.a", *o_files, cwd="./deps/macos/src/Chipmunk2D/build")
-    if not Path("./deps/macos/include/chipmunk").is_dir():
-      copy_dir_contents("./deps/macos/src/Chipmunk2D/include", "./deps/macos/include")
-    if not Path("./deps/macos/lib/libchipmunk2d.a").is_file():
-      shutil.copyfile("./deps/macos/src/Chipmunk2D/build/libchipmunk2d.a", "./deps/macos/lib/libchipmunk2d.a")
+  build_repo("https://github.com/slembcke/Chipmunk2D.git")
+
+  # Box2D
+  build_repo("https://github.com/erincatto/box2d.git")
 
   cc("clang", "-g", "-O0", "-c", "-I./deps/macos/include", src="./src", build="./build/macos")
   o_files = [str(x) for x in Path("./build/macos").rglob("*.o")]
@@ -110,7 +118,7 @@ if build:
     "src/arch/macos/main.swift",
     *o_files,
     "./deps/macos/lib/libMoltenVK.dylib",
-    "-lchipmunk2d",
+    "-lChipmunk2D",
     "-o", "./build/macos/game",
     "-framework", "AppKit",
     "-framework", "Metal",

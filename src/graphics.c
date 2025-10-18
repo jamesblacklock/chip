@@ -257,6 +257,10 @@ bool create_swapchain() {
     }
   }
 
+  glm_mat4_identity(ubo.view);
+  float aspect = Vulkan.swap_extent.width / (float) Vulkan.swap_extent.height;
+  glm_ortho(-aspect, aspect, -1, 1, -1, 1, ubo.proj);
+
   printf("Vulkan swapchain setup complete\n");
 
   return true;
@@ -774,10 +778,6 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     vkUpdateDescriptorSets(Vulkan.device, 1, &desc_write, 0, NULL);
   }
 
-  glm_mat4_identity(ubo.view);
-  float aspect = Vulkan.swap_extent.width / (float) Vulkan.swap_extent.height;
-  glm_ortho(-aspect, aspect, -1, 1, -1, 1, ubo.proj);
-
   return true;
 }
 
@@ -900,7 +900,7 @@ void end_render() {
     glm_mat4_identity(model);
     vec3 point = {data.x, data.y, 0};
     glm_translate(model, point);
-    glm_rotate(model, glm_rad(data.a), (vec3){0,0,1});
+    glm_rotate(model, data.a, (vec3){0,0,1});
     vkCmdPushConstants(command_buffer, Vulkan.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), &model);
     vkCmdDrawIndexed(command_buffer, 6, 1, 0, 4 * i, 0);
   }

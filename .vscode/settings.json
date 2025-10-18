@@ -91,5 +91,6 @@
     "entity.h": "c",
     "window.h": "c",
     "graphics.h": "c"
-  }
+  },
+  "search.useIgnoreFiles": false
 }

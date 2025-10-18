@@ -3,7 +3,6 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <math.h>
-// #include <chipmunk/chipmunk.h>
 
 #include "main.h"
 #include "window.h"
@@ -59,55 +58,42 @@ typedef struct EntityUpdateData {
   size_t ms;
 } EntityUpdateData;
 
-void update_entity(Entity* entity, void* _data) {
-  EntityUpdateData* data = _data;
-  if (entity == data->bloop) {
-    return;
-  }
-  if (fabsf(entity->velocity.x) < 0.001) {
-    entity->velocity.x = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-    entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-  }
-  if (fabsf(entity->velocity.y) < 0.001) {
-    entity->velocity.y = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-    entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-  }
-  if (entity->velocity.x > 0 && entity_to_window(entity->x) > window.width/2) {
-    entity->velocity.x = -entity->velocity.x;
-    entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-  }
-  if (entity->velocity.x < 0 && entity_to_window(-entity->x) > window.width/2) {
-    entity->velocity.x = -entity->velocity.x;
-    entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-  }
-  if (entity->velocity.y > 0 && entity_to_window(entity->y) > window.height/2) {
-    entity->velocity.y = -entity->velocity.y;
-    entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-  }
-  if (entity->velocity.y < 0 && entity_to_window(-entity->y) > window.height/2) {
-    entity->velocity.y = -entity->velocity.y;
-    entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-  }
-  entity->x += entity->velocity.x * data->ms;
-  entity->y += entity->velocity.y * data->ms;
-  entity->angle += entity->velocity.a * data->ms;
-}
+// void update_entity(Entity* entity, void* _data) {
+//   EntityUpdateData* data = _data;
+//   if (entity == data->bloop) {
+//     return;
+//   }
+//   if (fabsf(entity->velocity.x) < 0.001) {
+//     entity->velocity.x = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+//     entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+//   }
+//   if (fabsf(entity->velocity.y) < 0.001) {
+//     entity->velocity.y = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+//     entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+//   }
+//   if (entity->velocity.x > 0 && entity_to_window(entity->x) > window.width/2) {
+//     entity->velocity.x = -entity->velocity.x;
+//     entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+//   }
+//   if (entity->velocity.x < 0 && entity_to_window(-entity->x) > window.width/2) {
+//     entity->velocity.x = -entity->velocity.x;
+//     entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+//   }
+//   if (entity->velocity.y > 0 && entity_to_window(entity->y) > window.height/2) {
+//     entity->velocity.y = -entity->velocity.y;
+//     entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+//   }
+//   if (entity->velocity.y < 0 && entity_to_window(-entity->y) > window.height/2) {
+//     entity->velocity.y = -entity->velocity.y;
+//     entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+//   }
+//   entity->x += entity->velocity.x * data->ms;
+//   entity->y += entity->velocity.y * data->ms;
+//   entity->angle += entity->velocity.a * data->ms;
+// }
 
-void render_entity(Entity* entity, void* _data) {
-  float pos[2];
-  float sz[2];
-  screen_to_world(entity_to_window(entity->x), entity_to_window(entity->y), pos);
-  screen_to_world(entity_to_window(entity->w), entity_to_window(entity->h), sz);
-  draw_quad((QuadData){
-    .x = pos[0],
-    .y = pos[1],
-    .w = sz[0],
-    .h = sz[1],
-    .a = entity->angle,
-    .r = entity->color.r,
-    .g = entity->color.g,
-    .b = entity->color.b,
-  });
+float dist(float x, float y) {
+  return sqrt(x*x + y*y);
 }
 
 bool tick(size_t ms) {
@@ -139,17 +125,39 @@ bool tick(size_t ms) {
     bloop->x = x1 + bloop->w/2;
     bloop->h = y2 - y1;
     bloop->y = y1 + bloop->h/2;
+    // // DO NOT DELETE -- drawing a line
+    // float x1 = window_to_entity(drag_x);
+    // float x2 = window_to_entity(window.mouse_x);
+    // float y1 = window_to_entity(drag_y);
+    // float y2 = window_to_entity(window.mouse_y);
+    // float dx = x2-x1;
+    // float dy = y2-y1;
+    // bloop->angle = atan(dy/dx);
+    // if (window.keys[KEY_LSHIFT]) {
+    //   bloop->angle = round(bloop->angle / (M_PI/8)) * (M_PI/8);
+    //   float dist_xy = dist(dx, dy);
+    //   float x_sign = dx < 0 ? -1 : 1;
+    //   float y_sign = dy < 0 ? -1 : 1;
+    //   dx = fabs(cos(bloop->angle)) * dist_xy * x_sign;
+    //   dy = fabs(sin(bloop->angle)) * dist_xy * y_sign;
+    // }
+    // bloop->w = dist(dx, dy);
+    // bloop->x = dx/2 + x1;
+    // bloop->y = dy/2 + y1;
   }
-  if (!window.mouse_left) {
+  if (!window.mouse_left && bloop) {
+    attach_body(bloop, window.keys[KEY_LSHIFT]);
     bloop = NULL;
   }
   m = window.mouse_left;
   
-  visit_entities(update_entity, &(EntityUpdateData){ .bloop = bloop, .ms = ms });
+  // visit_entities(update_entity, &(EntityUpdateData){ .bloop = bloop, .ms = ms });
 
+  cpSpaceStep(space, ms / 1000.f);
+  update_entities();
 
   begin_render();
-  visit_entities(render_entity, NULL);
+  render_entities();
   end_render();
 
   if (window.keys[KEY_LMETA] && (window.keys[KEY_Q] || window.keys[KEY_W])) {
