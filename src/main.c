@@ -153,7 +153,7 @@ bool tick(size_t ms) {
   
   // visit_entities(update_entity, &(EntityUpdateData){ .bloop = bloop, .ms = ms });
 
-  cpSpaceStep(space, ms / 1000.f);
+  b2World_Step(world, 1.0/60.0, 4);
   update_entities();
 
   begin_render();

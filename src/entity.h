@@ -2,7 +2,7 @@
 #define ENTITY_H
 
 #include <stdbool.h>
-#include <chipmunk/chipmunk.h>
+#include <box2d/box2d.h>
 
 typedef struct EntityGlobals {
   float pixart_unit;
@@ -24,15 +24,14 @@ typedef struct Entity {
   Color color;
   bool live;
 
-  cpShape* shape;
-  cpBody* body;
+  b2BodyId body;
 } Entity;
 
 Entity* create_entity(Entity new_entity);
 void attach_body(Entity* entity, bool dynamic);
 
 extern EntityGlobals entity_globals;
-extern cpSpace* space;
+extern b2WorldId world;
 
 void init_entities();
 float window_to_entity(float x);

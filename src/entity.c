@@ -1,11 +1,9 @@
 #include <math.h>
+#include <box2d/box2d.h>
 
 #include "entity.h"
 #include "window.h"
 #include "graphics.h"
-#include <chipmunk/chipmunk.h>
-
-cpSpace* space;
 
 EntityGlobals entity_globals;
 
@@ -14,17 +12,17 @@ Entity entities[ENTITY_COUNT];
 size_t available[ENTITY_COUNT] = {};
 size_t available_idx = ENTITY_COUNT - 1;
 
+b2WorldId world;
+
 void init_entities() {
-  entity_globals.pixart_unit = round(sqrt(window.width * window.height) / 548.63467);
+  entity_globals.pixart_unit = fmax(1, round(sqrt(window.width * window.height) / 548.63467));
   for (size_t i=0; i < ENTITY_COUNT; i++) {
     available[i] = ENTITY_COUNT - i - 1;
   }
 
-  space = cpSpaceNew();
-	cpSpaceSetIterations(space, 30);
-	cpSpaceSetGravity(space, cpv(0, 300));
-	cpSpaceSetSleepTimeThreshold(space, 0.5f);
-	cpSpaceSetCollisionSlop(space, 0.1f);
+  b2WorldDef worldDef = b2DefaultWorldDef();
+  worldDef.gravity = (b2Vec2){0.0f, 100.0f};
+  world = b2CreateWorld(&worldDef);
 }
 
 void visit_entities(void (*visitor)(Entity*, void*), void* data) {
@@ -56,19 +54,19 @@ Entity* create_entity(Entity new_a) {
 }
 
 void attach_body(Entity* entity, bool dynamic) {
-  if (entity->body) {
+  if (B2_IS_NON_NULL(entity->body)) {
     return;
   }
 
-  float mass = 1;
-  entity->body = cpSpaceAddBody(space, cpBodyNew(mass, INFINITY));//fmax(cpMomentForBox(mass, entity->w, entity->h), 0.001)));
-  cpBodySetType(entity->body, dynamic ? CP_BODY_TYPE_DYNAMIC : CP_BODY_TYPE_STATIC);
-  entity->shape = cpSpaceAddShape(space, cpBoxShapeNew(entity->body, entity->w, entity->h, 0.0));
-  cpBodySetPosition(entity->body, cpv(entity->x, entity->y));
-  cpShapeSetElasticity(entity->shape, 0);
-  cpShapeSetFriction(entity->shape, 1);
-  // cpBodySetAngle(entity->body, M_PI/4);
-  cpSpaceReindexShapesForBody(space, entity->body);
+  b2BodyDef bodyDef = b2DefaultBodyDef();
+  bodyDef.type = dynamic ? b2_dynamicBody : b2_staticBody;
+  bodyDef.position = (b2Vec2){entity->x+0.1, entity->y};
+  entity->body = b2CreateBody(world, &bodyDef);
+  b2Polygon box = b2MakeBox(entity->w/2, entity->h/2);
+  b2ShapeDef shapeDef = b2DefaultShapeDef();
+  shapeDef.density = 1.0f;
+  shapeDef.material.friction = 0.3f;
+  b2CreatePolygonShape(entity->body, &shapeDef, &box);
 }
 
 void render_entity(Entity* entity, void* _data) {
@@ -93,13 +91,14 @@ void render_entities() {
 }
 
 void update_entity(Entity* entity, void* _data) {
-  if (!entity->body) {
+  if (B2_IS_NULL(entity->body)) {
     return;
   }
-  cpVect pos = cpBodyGetPosition(entity->body);
+
+  b2Vec2 pos = b2Body_GetPosition(entity->body);
   entity->x = pos.x;
   entity->y = pos.y;
-  entity->angle = cpBodyGetAngle(entity->body);
+  entity->angle = b2Rot_GetAngle(b2Body_GetRotation(entity->body));
 }
 
 void update_entities() {
