@@ -7,10 +7,10 @@
 
 EntityGlobals entity_globals;
 
-const size_t ENTITY_COUNT = 1000;
-Entity entities[ENTITY_COUNT];
-size_t available[ENTITY_COUNT] = {};
-size_t available_idx = ENTITY_COUNT - 1;
+static const size_t ENTITY_COUNT = 1000;
+static Entity entities[ENTITY_COUNT];
+static size_t available[ENTITY_COUNT] = {};
+static size_t available_idx = ENTITY_COUNT - 1;
 
 b2WorldId world;
 
@@ -71,7 +71,7 @@ void attach_body(Entity* entity, bool dynamic) {
   b2CreatePolygonShape(entity->body, &shapeDef, &box);
 }
 
-void render_entity(Entity* entity, void* _data) {
+static void render_entity(Entity* entity, void* _data) {
   float pos[2];
   float sz[2];
   screen_to_world(entity_to_window(entity->x), entity_to_window(entity->y), pos);
@@ -81,7 +81,7 @@ void render_entity(Entity* entity, void* _data) {
     .y = pos[1],
     .w = sz[0],
     .h = sz[1],
-    .a = entity->angle,
+    .angle = entity->angle,
     .r = entity->color.r,
     .g = entity->color.g,
     .b = entity->color.b,
@@ -92,7 +92,7 @@ void render_entities() {
   visit_entities(render_entity, NULL);
 }
 
-void update_entity(Entity* entity, void* _data) {
+static void update_entity(Entity* entity, void* _data) {
   if (B2_IS_NULL(entity->body)) {
     return;
   }

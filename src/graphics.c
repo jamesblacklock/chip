@@ -7,106 +7,134 @@
 #include "window.h"
 
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
-const size_t MAX_QUADS = 1000;
+const size_t MAX_TRIANGLES = 20000;
 
-typedef struct VkPoint {
+// MAX_TRIANGLES = 20000
+// 10,000 quads
+// gfx memory allocation approx. 1.2 MB
+// main memory allocation approx. 950 KB
+
+typedef struct VkTrianglePoint {
   vec2 pos;
-  vec3 color;
-} VkPoint;
+  uint32_t triangle_id;
+} VkTrianglePoint;
 
-typedef VkPoint VkQuad[4];
+typedef VkTrianglePoint VkTriangle[3];
+
+typedef struct VkTriangleAttr {
+  mat4 transform;
+  vec3 color;
+} VkTriangleAttr;
 
 typedef struct UBO {
   mat4 view;
   mat4 proj;
 } UBO;
 
-UBO ubo;
+typedef struct RenderContext {
+  size_t triangle_index;
+  uint32_t swap_index;
+} RenderContext;
 
-struct {
-  uint32_t graphics_queue_index;
-  VkPhysicalDevice physical_device;
-  VkSurfaceKHR surface;
-  uint32_t fb_width;
-  uint32_t fb_height;
-  VkDevice device;
-  VkSwapchainKHR swap_chain;
-  VkExtent2D swap_extent;
-  VkSurfaceFormatKHR surface_format;
-  uint32_t swap_image_count;
-  VkImage* swap_images;
-  VkImageView* swap_views;
-  VkPipelineLayout pipeline_layout;
-  VkDescriptorSetLayout desc_set_layout;
-  VkRenderPass render_pass;
-  VkPipeline pipeline;
-  VkFramebuffer* frame_buffers;
-  VkCommandPool command_pool;
-  VkCommandBuffer command_buffer[MAX_FRAMES_IN_FLIGHT];
-  VkSemaphore sig_ready[MAX_FRAMES_IN_FLIGHT];
-  VkSemaphore sig_rendered[MAX_FRAMES_IN_FLIGHT];
-  VkFence fence[MAX_FRAMES_IN_FLIGHT];
-  size_t frame_index;
-  VkDeviceSize vbuf_sz;
-  VkBuffer vbuf;
-  VkDeviceMemory vbuf_mem;
-  VkBuffer vbuf_stg;
-  VkDeviceMemory vbuf_stg_mem;
-  void* vbuf_stg_map;
-  VkBuffer vbuf_idx;
-  VkDeviceMemory vbuf_idx_mem;
-  VkBuffer ubuf[MAX_FRAMES_IN_FLIGHT];
-  VkDeviceMemory ubuf_mem[MAX_FRAMES_IN_FLIGHT];
-  UBO* ubuf_map[MAX_FRAMES_IN_FLIGHT];
-  VkDescriptorPool desc_pool;
-  VkDescriptorSet desc_set[MAX_FRAMES_IN_FLIGHT];
-} Vulkan = {
-  .vbuf_sz = sizeof(VkQuad) * MAX_QUADS,
-};
+static uint32_t g_graphics_queue_index;
+static VkPhysicalDevice g_physical_device;
+static VkSurfaceKHR g_surface;
+static uint32_t g_fb_width;
+static uint32_t g_fb_height;
+static VkDevice g_device;
+static VkSwapchainKHR g_swap_chain;
+static VkExtent2D g_swap_extent;
+static VkSurfaceFormatKHR g_surface_format;
+static uint32_t g_swap_image_count;
+static VkImage* g_swap_images;
+static VkImageView* g_swap_views;
+static VkPipelineLayout g_pipeline_layout;
+static VkDescriptorSetLayout g_desc_set_layout;
+static VkRenderPass g_render_pass;
+static VkPipeline g_pipeline;
+static VkFramebuffer* g_frame_buffers;
+static VkCommandPool g_command_pool;
+static VkCommandBuffer g_command_buffer[MAX_FRAMES_IN_FLIGHT];
 
-uint32_t clamp(uint32_t n, uint32_t min, uint32_t max) {
+static VkSemaphore g_sig_ready[MAX_FRAMES_IN_FLIGHT];
+static VkSemaphore g_sig_rendered[MAX_FRAMES_IN_FLIGHT];
+static VkFence g_fence[MAX_FRAMES_IN_FLIGHT];
+
+static size_t g_frame_index;
+
+static VkDeviceSize g_vbuf_sz = sizeof(VkTriangle) * MAX_TRIANGLES;
+static VkBuffer g_vbuf;
+static VkDeviceMemory g_vbuf_mem;
+static VkBuffer g_vbuf_stg;
+static VkDeviceMemory g_vbuf_stg_mem;
+static void* g_vbuf_stg_map;
+
+static VkDeviceSize g_sbuf_sz = sizeof(VkTriangleAttr) * MAX_TRIANGLES;
+static VkBuffer g_sbuf;
+static VkDeviceMemory g_sbuf_mem;
+static VkBuffer g_sbuf_stg;
+static VkDeviceMemory g_sbuf_stg_mem;
+static void* g_sbuf_stg_map;
+
+static VkDeviceSize g_ubuf_sz = sizeof(UBO);
+static VkBuffer g_ubuf[MAX_FRAMES_IN_FLIGHT];
+static VkDeviceMemory g_ubuf_mem[MAX_FRAMES_IN_FLIGHT];
+static void* g_ubuf_map[MAX_FRAMES_IN_FLIGHT];
+
+static VkDescriptorPool g_desc_pool;
+static VkDescriptorSet g_desc_set[MAX_FRAMES_IN_FLIGHT];
+
+static TriangleData g_triangle_data[MAX_FRAMES_IN_FLIGHT][MAX_TRIANGLES];
+
+static RenderContext g_ctx[MAX_FRAMES_IN_FLIGHT];
+
+static UBO g_ubo;
+
+static uint32_t clamp(uint32_t n, uint32_t min, uint32_t max) {
   return n > max ? max : n < min ? min : n;
 }
 
-void cleanup_swapchain() {
-  for (uint32_t i = 0; i < Vulkan.swap_image_count; i++) {
-    vkDestroyFramebuffer(Vulkan.device, Vulkan.frame_buffers[i], NULL);
+static void cleanup_swapchain() {
+  for (uint32_t i = 0; i < g_swap_image_count; i++) {
+    vkDestroyFramebuffer(g_device, g_frame_buffers[i], NULL);
   }
-  for (uint32_t i = 0; i < Vulkan.swap_image_count; i++) {
-    vkDestroyImageView(Vulkan.device, Vulkan.swap_views[i], NULL);
+  for (uint32_t i = 0; i < g_swap_image_count; i++) {
+    vkDestroyImageView(g_device, g_swap_views[i], NULL);
   }
-  vkDestroySwapchainKHR(Vulkan.device, Vulkan.swap_chain, NULL);
+  vkDestroySwapchainKHR(g_device, g_swap_chain, NULL);
 }
 
 void cleanup_vulkan() {
-  vkDeviceWaitIdle(Vulkan.device);
+  vkDeviceWaitIdle(g_device);
   for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    vkDestroySemaphore(Vulkan.device, Vulkan.sig_ready[i], NULL);
-    vkDestroySemaphore(Vulkan.device, Vulkan.sig_rendered[i], NULL);
-    vkDestroyFence(Vulkan.device, Vulkan.fence[i], NULL);
+    vkDestroySemaphore(g_device, g_sig_ready[i], NULL);
+    vkDestroySemaphore(g_device, g_sig_rendered[i], NULL);
+    vkDestroyFence(g_device, g_fence[i], NULL);
   }
-  vkDestroyCommandPool(Vulkan.device, Vulkan.command_pool, NULL);
-  vkDestroyPipeline(Vulkan.device, Vulkan.pipeline, NULL);
-  vkDestroyRenderPass(Vulkan.device, Vulkan.render_pass, NULL);
+  vkDestroyCommandPool(g_device, g_command_pool, NULL);
+  vkDestroyPipeline(g_device, g_pipeline, NULL);
+  vkDestroyRenderPass(g_device, g_render_pass, NULL);
   cleanup_swapchain();
-  vkDestroyBuffer(Vulkan.device, Vulkan.vbuf, NULL);
-  vkFreeMemory(Vulkan.device, Vulkan.vbuf_mem, NULL);
-  vkDestroyBuffer(Vulkan.device, Vulkan.vbuf_stg, NULL);
-  vkFreeMemory(Vulkan.device, Vulkan.vbuf_stg_mem, NULL);
-  vkDestroyBuffer(Vulkan.device, Vulkan.vbuf_idx, NULL);
-  vkFreeMemory(Vulkan.device, Vulkan.vbuf_idx_mem, NULL);
-  vkDestroyPipelineLayout(Vulkan.device, Vulkan.pipeline_layout, NULL);
+  vkDestroyBuffer(g_device, g_vbuf, NULL);
+  vkFreeMemory(g_device, g_vbuf_mem, NULL);
+  vkDestroyBuffer(g_device, g_vbuf_stg, NULL);
+  vkFreeMemory(g_device, g_vbuf_stg_mem, NULL);
+  vkDestroyBuffer(g_device, g_sbuf, NULL);
+  vkFreeMemory(g_device, g_sbuf_mem, NULL);
+  vkDestroyBuffer(g_device, g_sbuf_stg, NULL);
+  vkFreeMemory(g_device, g_sbuf_stg_mem, NULL);
+  vkDestroyPipelineLayout(g_device, g_pipeline_layout, NULL);
   for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    vkDestroyBuffer(Vulkan.device, Vulkan.ubuf[i], NULL);
-    vkFreeMemory(Vulkan.device, Vulkan.ubuf_mem[i], NULL);
+    vkDestroyBuffer(g_device, g_ubuf[i], NULL);
+    vkFreeMemory(g_device, g_ubuf_mem[i], NULL);
   }
-  vkDestroyDescriptorSetLayout(Vulkan.device, Vulkan.desc_set_layout, NULL);
-  vkDestroyDevice(Vulkan.device, NULL);
+  vkDestroyDescriptorSetLayout(g_device, g_desc_set_layout, NULL);
+  vkDestroyDevice(g_device, NULL);
 
   printf("cleanup complete\n");
 }
 
-VkShaderModule load_shader(const char* filename) {
+static VkShaderModule load_shader(const char* filename) {
   size_t size;
   byte* bytes = read_file(filename, &size);
   VkShaderModuleCreateInfo create_info = {
@@ -115,13 +143,13 @@ VkShaderModule load_shader(const char* filename) {
     .pCode = (uint32_t*) bytes,
   };
   VkShaderModule module;
-  if (vkCreateShaderModule(Vulkan.device, &create_info, NULL, &module) != VK_SUCCESS) {
+  if (vkCreateShaderModule(g_device, &create_info, NULL, &module) != VK_SUCCESS) {
     return NULL;
   }
   return module;
 }
 
-VkExtent2D choose_swap_extent(VkSurfaceCapabilitiesKHR* caps, uint32_t fb_width, uint32_t fb_height) {
+static VkExtent2D choose_swap_extent(VkSurfaceCapabilitiesKHR* caps, uint32_t fb_width, uint32_t fb_height) {
   if (caps->currentExtent.width != UINT32_MAX) {
     return caps->currentExtent;
   } else {
@@ -138,45 +166,45 @@ VkExtent2D choose_swap_extent(VkSurfaceCapabilitiesKHR* caps, uint32_t fb_width,
   }
 }
 
-bool create_swapchain() {
-  if (Vulkan.swap_chain != VK_NULL_HANDLE) {
-    vkDeviceWaitIdle(Vulkan.device);
+static bool create_swapchain() {
+  if (g_swap_chain != VK_NULL_HANDLE) {
+    vkDeviceWaitIdle(g_device);
     cleanup_swapchain();
-    Vulkan.swap_chain = VK_NULL_HANDLE;
+    g_swap_chain = VK_NULL_HANDLE;
   }
 
   VkSurfaceCapabilitiesKHR caps;
-  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(Vulkan.physical_device, Vulkan.surface, &caps);
-  Vulkan.swap_extent = choose_swap_extent(&caps, Vulkan.fb_width, Vulkan.fb_height);
+  vkGetPhysicalDeviceSurfaceCapabilitiesKHR(g_physical_device, g_surface, &caps);
+  g_swap_extent = choose_swap_extent(&caps, g_fb_width, g_fb_height);
 
   uint32_t format_count;
-  vkGetPhysicalDeviceSurfaceFormatsKHR(Vulkan.physical_device, Vulkan.surface, &format_count, NULL);
+  vkGetPhysicalDeviceSurfaceFormatsKHR(g_physical_device, g_surface, &format_count, NULL);
   if (format_count == 0) {
     fprintf(stderr, "format_count == 0\n");
     return false;
   }
   VkSurfaceFormatKHR* formats = malloc(sizeof(VkSurfaceFormatKHR) * format_count);
-  vkGetPhysicalDeviceSurfaceFormatsKHR(Vulkan.physical_device, Vulkan.surface, &format_count, formats);
+  vkGetPhysicalDeviceSurfaceFormatsKHR(g_physical_device, g_surface, &format_count, formats);
   bool found_surface_format = false;
   for (uint32_t i = 0; i < format_count; i++) {
     if (formats[i].format == VK_FORMAT_B8G8R8A8_SRGB && formats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR) {
       found_surface_format = true;
-      Vulkan.surface_format = formats[i];
+      g_surface_format = formats[i];
       break;
     }
   }
   if (!found_surface_format) {
-    Vulkan.surface_format = formats[0];
+    g_surface_format = formats[0];
   }
 
   uint32_t present_modes_count;
-  vkGetPhysicalDeviceSurfacePresentModesKHR(Vulkan.physical_device, Vulkan.surface, &present_modes_count, NULL);
+  vkGetPhysicalDeviceSurfacePresentModesKHR(g_physical_device, g_surface, &present_modes_count, NULL);
   if (present_modes_count == 0) {
     fprintf(stderr, "present_modes_count == 0\n");
     return false;
   }
   VkPresentModeKHR* present_modes = malloc(sizeof(VkPresentModeKHR) * present_modes_count);
-  vkGetPhysicalDeviceSurfacePresentModesKHR(Vulkan.physical_device, Vulkan.surface, &present_modes_count, present_modes);
+  vkGetPhysicalDeviceSurfacePresentModesKHR(g_physical_device, g_surface, &present_modes_count, present_modes);
   VkPresentModeKHR present_mode = VK_PRESENT_MODE_FIFO_KHR;
   for (uint32_t i = 0; i < present_modes_count; i++) {
     if (present_modes[i] == VK_PRESENT_MODE_MAILBOX_KHR) {
@@ -189,11 +217,11 @@ bool create_swapchain() {
 
   VkSwapchainCreateInfoKHR swapchain_create_info = {
     .sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-    .surface = Vulkan.surface,
+    .surface = g_surface,
     .minImageCount = image_count,
-    .imageFormat = Vulkan.surface_format.format,
-    .imageColorSpace = Vulkan.surface_format.colorSpace,
-    .imageExtent = Vulkan.swap_extent,
+    .imageFormat = g_surface_format.format,
+    .imageColorSpace = g_surface_format.colorSpace,
+    .imageExtent = g_swap_extent,
     .imageArrayLayers = 1,
     .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
     .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE,
@@ -203,22 +231,22 @@ bool create_swapchain() {
     .clipped = VK_TRUE,
     .oldSwapchain = VK_NULL_HANDLE,
   };
-  if (vkCreateSwapchainKHR(Vulkan.device, &swapchain_create_info, NULL, &Vulkan.swap_chain) != VK_SUCCESS) {
+  if (vkCreateSwapchainKHR(g_device, &swapchain_create_info, NULL, &g_swap_chain) != VK_SUCCESS) {
     fprintf(stderr, "failed to create swapchain\n");
     return false;
   }
 
-  vkGetSwapchainImagesKHR(Vulkan.device, Vulkan.swap_chain, &Vulkan.swap_image_count, NULL);
-  Vulkan.swap_images = malloc(sizeof(VkImage) * Vulkan.swap_image_count);
-  vkGetSwapchainImagesKHR(Vulkan.device, Vulkan.swap_chain, &Vulkan.swap_image_count, Vulkan.swap_images);
+  vkGetSwapchainImagesKHR(g_device, g_swap_chain, &g_swap_image_count, NULL);
+  g_swap_images = malloc(sizeof(VkImage) * g_swap_image_count);
+  vkGetSwapchainImagesKHR(g_device, g_swap_chain, &g_swap_image_count, g_swap_images);
 
-  Vulkan.swap_views = malloc(sizeof(VkImageView) * Vulkan.swap_image_count);
-  for (uint32_t i = 0; i < Vulkan.swap_image_count; i++) {
+  g_swap_views = malloc(sizeof(VkImageView) * g_swap_image_count);
+  for (uint32_t i = 0; i < g_swap_image_count; i++) {
     VkImageViewCreateInfo create_info = {
       .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-      .image = Vulkan.swap_images[i],
+      .image = g_swap_images[i],
       .viewType = VK_IMAGE_VIEW_TYPE_2D,
-      .format = Vulkan.surface_format.format,
+      .format = g_surface_format.format,
       .components = {
         .r = VK_COMPONENT_SWIZZLE_IDENTITY,
         .g = VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -233,33 +261,33 @@ bool create_swapchain() {
         .layerCount = 1,
       },
     };
-    if (vkCreateImageView(Vulkan.device, &create_info, NULL, &Vulkan.swap_views[i]) != VK_SUCCESS) {
+    if (vkCreateImageView(g_device, &create_info, NULL, &g_swap_views[i]) != VK_SUCCESS) {
       fprintf(stderr, "failed to create swap image views\n");
       return false;
     }
   }
 
-  Vulkan.frame_buffers = malloc(sizeof(VkFramebuffer) * Vulkan.swap_image_count);
-  for (uint32_t i = 0; i < Vulkan.swap_image_count; i++) {
+  g_frame_buffers = malloc(sizeof(VkFramebuffer) * g_swap_image_count);
+  for (uint32_t i = 0; i < g_swap_image_count; i++) {
     VkFramebufferCreateInfo framebufferInfo = {
       .sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-      .renderPass = Vulkan.render_pass,
+      .renderPass = g_render_pass,
       .attachmentCount = 1,
-      .pAttachments = &Vulkan.swap_views[i],
-      .width = Vulkan.swap_extent.width,
-      .height = Vulkan.swap_extent.height,
+      .pAttachments = &g_swap_views[i],
+      .width = g_swap_extent.width,
+      .height = g_swap_extent.height,
       .layers = 1,
     };
 
-    if (vkCreateFramebuffer(Vulkan.device, &framebufferInfo, NULL, &Vulkan.frame_buffers[i]) != VK_SUCCESS) {
+    if (vkCreateFramebuffer(g_device, &framebufferInfo, NULL, &g_frame_buffers[i]) != VK_SUCCESS) {
       fprintf(stderr, "failed to create frame buffers\n");
       return false;
     }
   }
 
-  glm_mat4_identity(ubo.view);
-  float aspect = Vulkan.swap_extent.width / (float) Vulkan.swap_extent.height;
-  glm_ortho(-aspect, aspect, -1, 1, -1, 1, ubo.proj);
+  glm_mat4_identity(g_ubo.view);
+  float aspect = g_swap_extent.width / (float) g_swap_extent.height;
+  glm_ortho(-aspect, aspect, -1, 1, -1, 1, g_ubo.proj);
 
   printf("Vulkan swapchain setup complete\n");
 
@@ -275,22 +303,22 @@ int32_t find_memory_type(VkPhysicalDeviceMemoryProperties mem_props, uint32_t fi
   return -1;
 }
 
-bool create_buffer(VkBuffer* buf, VkDeviceMemory* mem, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags mem_props) {
-  VkBufferCreateInfo vbuf_info = {
+static bool create_buffer(VkBuffer* buf, VkDeviceMemory* mem, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags mem_props) {
+  VkBufferCreateInfo create_info = {
     .sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
     .size = size,
     .usage = usage,
     .sharingMode = VK_SHARING_MODE_EXCLUSIVE,
   };
-  if (vkCreateBuffer(Vulkan.device, &vbuf_info, NULL, buf) != VK_SUCCESS) {
+  if (vkCreateBuffer(g_device, &create_info, NULL, buf) != VK_SUCCESS) {
     fprintf(stderr, "failed to create buffer\n");
     return false;
   }
 
   VkMemoryRequirements mem_req;
-  vkGetBufferMemoryRequirements(Vulkan.device, *buf, &mem_req);
+  vkGetBufferMemoryRequirements(g_device, *buf, &mem_req);
   VkPhysicalDeviceMemoryProperties dev_mem_props;
-  vkGetPhysicalDeviceMemoryProperties(Vulkan.physical_device, &dev_mem_props);
+  vkGetPhysicalDeviceMemoryProperties(g_physical_device, &dev_mem_props);
 
   int32_t mem_type_index = find_memory_type(dev_mem_props, mem_req.memoryTypeBits, mem_props);
   if (mem_type_index < 0) {
@@ -298,36 +326,36 @@ bool create_buffer(VkBuffer* buf, VkDeviceMemory* mem, VkDeviceSize size, VkBuff
     return false;
   }
 
-  VkMemoryAllocateInfo vbuf_alloc_info = {
+  VkMemoryAllocateInfo alloc_info = {
     .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
     .allocationSize = mem_req.size,
     .memoryTypeIndex = mem_type_index,
   };
-  if (vkAllocateMemory(Vulkan.device, &vbuf_alloc_info, NULL, mem) != VK_SUCCESS) {
+  if (vkAllocateMemory(g_device, &alloc_info, NULL, mem) != VK_SUCCESS) {
     fprintf(stderr, "failed to allocate buffer memory\n");
     return false;
   }
-  vkBindBufferMemory(Vulkan.device, *buf, *mem, 0);
+  vkBindBufferMemory(g_device, *buf, *mem, 0);
 
   return true;
 }
 
-VkQueue get_graphics_queue() {
+static VkQueue get_graphics_queue() {
   VkQueue queue;
-  vkGetDeviceQueue(Vulkan.device, Vulkan.graphics_queue_index, 0, &queue);
+  vkGetDeviceQueue(g_device, g_graphics_queue_index, 0, &queue);
   return queue;
 }
 
-void copy_buffer(VkBuffer src, VkBuffer dst, VkDeviceSize sz) {
+static void copy_buffer(VkBuffer src, VkBuffer dst, VkDeviceSize sz) {
   VkCommandBufferAllocateInfo alloc_info = {
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
     .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-    .commandPool = Vulkan.command_pool,
+    .commandPool = g_command_pool,
     .commandBufferCount = 1,
   };
 
   VkCommandBuffer cmd;
-  vkAllocateCommandBuffers(Vulkan.device, &alloc_info, &cmd);
+  vkAllocateCommandBuffers(g_device, &alloc_info, &cmd);
 
   VkCommandBufferBeginInfo begin_info = {
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
@@ -346,13 +374,13 @@ void copy_buffer(VkBuffer src, VkBuffer dst, VkDeviceSize sz) {
   vkQueueSubmit(queue, 1, &submit, VK_NULL_HANDLE);
 
   vkQueueWaitIdle(queue);
-  vkFreeCommandBuffers(Vulkan.device, Vulkan.command_pool, 1, &cmd);
+  vkFreeCommandBuffers(g_device, g_command_pool, 1, &cmd);
 }
 
 bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, uint32_t fb_height) {
-  Vulkan.surface = surface;
-  Vulkan.fb_width = fb_width;
-  Vulkan.fb_height = fb_height;
+  g_surface = surface;
+  g_fb_width = fb_width;
+  g_fb_height = fb_height;
 
   uint32_t device_count;
   vkEnumeratePhysicalDevices(instance, &device_count, NULL);
@@ -360,24 +388,24 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     fprintf(stderr, "no device available\n");
     return false;
   }
-  vkEnumeratePhysicalDevices(instance, &device_count, &Vulkan.physical_device);
+  vkEnumeratePhysicalDevices(instance, &device_count, &g_physical_device);
 
   uint32_t queue_family_count;
-  vkGetPhysicalDeviceQueueFamilyProperties(Vulkan.physical_device, &queue_family_count, NULL);
+  vkGetPhysicalDeviceQueueFamilyProperties(g_physical_device, &queue_family_count, NULL);
   if (queue_family_count < 1) {
     fprintf(stderr, "queue_family_count < 1\n");
     return false;
   }
   VkQueueFamilyProperties* queue_familes = malloc(sizeof(VkQueueFamilyProperties) * queue_family_count);
-  vkGetPhysicalDeviceQueueFamilyProperties(Vulkan.physical_device, &queue_family_count, queue_familes);
+  vkGetPhysicalDeviceQueueFamilyProperties(g_physical_device, &queue_family_count, queue_familes);
   bool found_graphics_queue_index = false;
   for (uint32_t i = 0; i < queue_family_count; i++) {
     if (queue_familes[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) {
       VkBool32 can_present;
-      vkGetPhysicalDeviceSurfaceSupportKHR(Vulkan.physical_device, i, surface, &can_present);
+      vkGetPhysicalDeviceSurfaceSupportKHR(g_physical_device, i, surface, &can_present);
       if (can_present) {
         found_graphics_queue_index = true;
-        Vulkan.graphics_queue_index = i;
+        g_graphics_queue_index = i;
         break;
       }
     }
@@ -388,12 +416,12 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
   }
 
   VkPhysicalDeviceFeatures features;
-  vkGetPhysicalDeviceFeatures(Vulkan.physical_device, &features);
+  vkGetPhysicalDeviceFeatures(g_physical_device, &features);
   
   float priority = 1.0;
   VkDeviceQueueCreateInfo queueCreateInfo = {
     .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-    .queueFamilyIndex = Vulkan.graphics_queue_index,
+    .queueFamilyIndex = g_graphics_queue_index,
     .queueCount = 1,
     .pQueuePriorities = &priority,
   };
@@ -408,7 +436,7 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     .enabledLayerCount = 0,
     .ppEnabledLayerNames = NULL,
   };
-  if (vkCreateDevice(Vulkan.physical_device, &create_info, NULL, &Vulkan.device) != VK_SUCCESS) {
+  if (vkCreateDevice(g_physical_device, &create_info, NULL, &g_device) != VK_SUCCESS) {
     fprintf(stderr, "failed to create logical device\n");
     return false;
   }
@@ -456,7 +484,7 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
 
   VkVertexInputBindingDescription input_desc = {
     .binding = 0,
-    .stride = sizeof(float) * 5,
+    .stride = sizeof(VkTrianglePoint),
     .inputRate = VK_VERTEX_INPUT_RATE_VERTEX,
   };
 
@@ -465,13 +493,13 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
       .binding = 0,
       .location = 0,
       .format = VK_FORMAT_R32G32_SFLOAT,
-      .offset = 0,
+      .offset = offsetof(VkTrianglePoint, pos),
     },
     {
       .binding = 0,
       .location = 1,
-      .format = VK_FORMAT_R32G32B32_SFLOAT,
-      .offset = sizeof(float) * 2,
+      .format = VK_FORMAT_R32_UINT,
+      .offset = offsetof(VkTrianglePoint, triangle_id),
     },
   };
 
@@ -492,15 +520,15 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
   VkViewport viewport = {
     .x = 0.0f,
     .y = 0.0f,
-    .width = (float) Vulkan.swap_extent.width,
-    .height = (float) Vulkan.swap_extent.height,
+    .width = (float) g_swap_extent.width,
+    .height = (float) g_swap_extent.height,
     .minDepth = 0.0f,
     .maxDepth = 1.0f,
   };
 
   VkRect2D scissor = {
     .offset = {0, 0},
-    .extent = Vulkan.swap_extent,
+    .extent = g_swap_extent,
   };
 
   VkPipelineViewportStateCreateInfo viewport_state = {
@@ -558,36 +586,37 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     .descriptorCount = 1,
     .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
   };
+  VkDescriptorSetLayoutBinding attr_layout_binding = {
+    .binding = 1,
+    .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+    .descriptorCount = 1,
+    .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
+  };
+  VkDescriptorSetLayoutBinding bindings[2] = {ubo_layout_binding, attr_layout_binding};
   VkDescriptorSetLayoutCreateInfo layout_info = {
     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
-    .bindingCount = 1,
-    .pBindings = &ubo_layout_binding,
+    .bindingCount = 2,
+    .pBindings = bindings,
   };
-  if (vkCreateDescriptorSetLayout(Vulkan.device, &layout_info, NULL, &Vulkan.desc_set_layout) != VK_SUCCESS) {
+  if (vkCreateDescriptorSetLayout(g_device, &layout_info, NULL, &g_desc_set_layout) != VK_SUCCESS) {
     fprintf(stderr, "failed to create descriptor set layout\n");
     return false;
   }
 
-  VkPushConstantRange pconst_range = {
-    .stageFlags = VK_SHADER_STAGE_VERTEX_BIT,
-    .offset = 0,
-    .size = sizeof(mat4),
-  };
   VkPipelineLayoutCreateInfo pipeline_layout_info = {
     .sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
     .setLayoutCount = 1,
-    .pSetLayouts = &Vulkan.desc_set_layout,
-    .pushConstantRangeCount = 1,
-    .pPushConstantRanges = &pconst_range,
+    .pSetLayouts = &g_desc_set_layout,
+    .pushConstantRangeCount = 0,
   };
 
-  if (vkCreatePipelineLayout(Vulkan.device, &pipeline_layout_info, NULL, &Vulkan.pipeline_layout) != VK_SUCCESS) {
+  if (vkCreatePipelineLayout(g_device, &pipeline_layout_info, NULL, &g_pipeline_layout) != VK_SUCCESS) {
     fprintf(stderr, "failed to create pipeline layout\n");
     return false;
   }
 
   VkAttachmentDescription color_attachment = {
-    .format = Vulkan.surface_format.format,
+    .format = g_surface_format.format,
     .samples = VK_SAMPLE_COUNT_1_BIT,
     .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR,
     .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
@@ -626,7 +655,7 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     .dependencyCount = 1,
     .pDependencies = &dep,
   };
-  if (vkCreateRenderPass(Vulkan.device, &render_pass_create_info, NULL, &Vulkan.render_pass) != VK_SUCCESS) {
+  if (vkCreateRenderPass(g_device, &render_pass_create_info, NULL, &g_render_pass) != VK_SUCCESS) {
     fprintf(stderr, "failed to create render pass\n");
     return false;
   }
@@ -642,98 +671,86 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     .pMultisampleState = &multisampling,
     .pColorBlendState = &blend,
     .pDynamicState = &dynamic_state,
-    .layout = Vulkan.pipeline_layout,
-    .renderPass = Vulkan.render_pass,
+    .layout = g_pipeline_layout,
+    .renderPass = g_render_pass,
     .subpass = 0,
   };
 
-  if (vkCreateGraphicsPipelines(Vulkan.device, VK_NULL_HANDLE, 1, &pipeline_info, NULL, &Vulkan.pipeline) != VK_SUCCESS) {
+  if (vkCreateGraphicsPipelines(g_device, VK_NULL_HANDLE, 1, &pipeline_info, NULL, &g_pipeline) != VK_SUCCESS) {
     fprintf(stderr, "failed to create graphics pipeline\n");
     return false;
   }
 
   printf("Created Vulkan graphics pipeline\n");
 
-  vkDestroyShaderModule(Vulkan.device, vert, NULL);
-  vkDestroyShaderModule(Vulkan.device, frag, NULL);
+  vkDestroyShaderModule(g_device, vert, NULL);
+  vkDestroyShaderModule(g_device, frag, NULL);
 
   VkCommandPoolCreateInfo pool_info = {
     .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
     .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
-    .queueFamilyIndex = Vulkan.graphics_queue_index,
+    .queueFamilyIndex = g_graphics_queue_index,
   };
-  if (vkCreateCommandPool(Vulkan.device, &pool_info, NULL, &Vulkan.command_pool) != VK_SUCCESS) {
+  if (vkCreateCommandPool(g_device, &pool_info, NULL, &g_command_pool) != VK_SUCCESS) {
     fprintf(stderr, "failed to command pool\n");
     return false;
   }
 
   VkCommandBufferAllocateInfo alloc_info = {
     .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-    .commandPool = Vulkan.command_pool,
+    .commandPool = g_command_pool,
     .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY,
     .commandBufferCount = MAX_FRAMES_IN_FLIGHT,
   };
-  if (vkAllocateCommandBuffers(Vulkan.device, &alloc_info, Vulkan.command_buffer) != VK_SUCCESS) {
+  if (vkAllocateCommandBuffers(g_device, &alloc_info, g_command_buffer) != VK_SUCCESS) {
     fprintf(stderr, "failed to command buffers\n");
     return false;
   }
 
   for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    if (vkCreateSemaphore(Vulkan.device, &(VkSemaphoreCreateInfo) { .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO }, NULL, &Vulkan.sig_ready[i]) != VK_SUCCESS
-      || vkCreateSemaphore(Vulkan.device, &(VkSemaphoreCreateInfo) { .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO }, NULL, &Vulkan.sig_rendered[i]) != VK_SUCCESS
-      || vkCreateFence(Vulkan.device, &(VkFenceCreateInfo) { .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .flags = VK_FENCE_CREATE_SIGNALED_BIT }, NULL, &Vulkan.fence[i]) != VK_SUCCESS) {
+    if (vkCreateSemaphore(g_device, &(VkSemaphoreCreateInfo) { .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO }, NULL, &g_sig_ready[i]) != VK_SUCCESS
+      || vkCreateSemaphore(g_device, &(VkSemaphoreCreateInfo) { .sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO }, NULL, &g_sig_rendered[i]) != VK_SUCCESS
+      || vkCreateFence(g_device, &(VkFenceCreateInfo) { .sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, .flags = VK_FENCE_CREATE_SIGNALED_BIT }, NULL, &g_fence[i]) != VK_SUCCESS) {
       fprintf(stderr, "failed to create sync primitives\n");
     }
   }
 
+  // vertex buffer setup
   VkBufferUsageFlags vbuf_stg_usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
   VkMemoryPropertyFlags vbuf_stg_mem_props = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-  if (!create_buffer(&Vulkan.vbuf_stg, &Vulkan.vbuf_stg_mem, Vulkan.vbuf_sz, vbuf_stg_usage, vbuf_stg_mem_props)) {
+  if (!create_buffer(&g_vbuf_stg, &g_vbuf_stg_mem, g_vbuf_sz, vbuf_stg_usage, vbuf_stg_mem_props)) {
     return false;
   }
-  vkMapMemory(Vulkan.device, Vulkan.vbuf_stg_mem, 0, Vulkan.vbuf_sz, 0, &Vulkan.vbuf_stg_map);
+  vkMapMemory(g_device, g_vbuf_stg_mem, 0, g_vbuf_sz, 0, &g_vbuf_stg_map);
 
   VkBufferUsageFlags vbuf_usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
   VkMemoryPropertyFlags vbuf_mem_props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-  if (!create_buffer(&Vulkan.vbuf, &Vulkan.vbuf_mem, Vulkan.vbuf_sz, vbuf_usage, vbuf_mem_props)) {
+  if (!create_buffer(&g_vbuf, &g_vbuf_mem, g_vbuf_sz, vbuf_usage, vbuf_mem_props)) {
     return false;
   }
 
-  uint16_t idx_data[6] = {0, 1, 2, 1, 3, 2};
-  VkDeviceSize vbuf_idx_sz = sizeof(idx_data);
-  VkDeviceMemory vbuf_idx_stg_mem;
-  VkBuffer vbuf_idx_stg;
-  VkBufferUsageFlags vbuf_idx_stg_usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-  VkMemoryPropertyFlags vbuf_idx_stg_mem_props = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-  if (!create_buffer(&vbuf_idx_stg, &vbuf_idx_stg_mem, vbuf_idx_sz, vbuf_idx_stg_usage, vbuf_idx_stg_mem_props)) {
+  // storage buffer setup
+  VkBufferUsageFlags sbuf_stg_usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+  VkMemoryPropertyFlags sbuf_stg_mem_props = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+  if (!create_buffer(&g_sbuf_stg, &g_sbuf_stg_mem, g_sbuf_sz, sbuf_stg_usage, sbuf_stg_mem_props)) {
     return false;
   }
+  vkMapMemory(g_device, g_sbuf_stg_mem, 0, g_sbuf_sz, 0, &g_sbuf_stg_map);
 
-  VkBufferUsageFlags vbuf_idx_usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-  VkMemoryPropertyFlags vbuf_idx_mem_props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-  if (!create_buffer(&Vulkan.vbuf_idx, &Vulkan.vbuf_idx_mem, vbuf_idx_sz, vbuf_idx_usage, vbuf_idx_mem_props)) {
+  VkBufferUsageFlags sbuf_usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+  VkMemoryPropertyFlags sbuf_mem_props = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+  if (!create_buffer(&g_sbuf, &g_sbuf_mem, g_sbuf_sz, sbuf_usage, sbuf_mem_props)) {
     return false;
   }
-
-  void* data;
-  vkMapMemory(Vulkan.device, vbuf_idx_stg_mem, 0, vbuf_idx_sz, 0, &data);
-  memcpy(data, idx_data, (size_t) vbuf_idx_sz);
-  vkUnmapMemory(Vulkan.device, vbuf_idx_stg_mem);
-  copy_buffer(vbuf_idx_stg, Vulkan.vbuf_idx, vbuf_idx_sz);
-  vkDestroyBuffer(Vulkan.device, vbuf_idx_stg, NULL);
-  vkFreeMemory(Vulkan.device, vbuf_idx_stg_mem, NULL);
 
   for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    if (!create_buffer(
-      &Vulkan.ubuf[i],
-      &Vulkan.ubuf_mem[i],
-      sizeof(UBO),
-      VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-      VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT
-    )) {
+    // uniform buffer setup
+    VkBufferUsageFlags ubuf_stg_usage = VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    VkMemoryPropertyFlags ubuf_stg_mem_props = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+    if (!create_buffer(&g_ubuf[i], &g_ubuf_mem[i], g_ubuf_sz, ubuf_stg_usage, ubuf_stg_mem_props)) {
       return false;
     }
-    vkMapMemory(Vulkan.device, Vulkan.ubuf_mem[i], 0, sizeof(UBO), 0, (void*)&Vulkan.ubuf_map[i]);
+    vkMapMemory(g_device, g_ubuf_mem[i], 0, g_ubuf_sz, 0, &g_ubuf_map[i]);
   }
 
   VkDescriptorPoolCreateInfo desc_pool_info = {
@@ -745,37 +762,53 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
     },
     .maxSets = MAX_FRAMES_IN_FLIGHT,
   };
-  if (vkCreateDescriptorPool(Vulkan.device, &desc_pool_info, NULL, &Vulkan.desc_pool) != VK_SUCCESS) {
+  if (vkCreateDescriptorPool(g_device, &desc_pool_info, NULL, &g_desc_pool) != VK_SUCCESS) {
     fprintf(stderr, "failed to create descriptor pool\n");
     return false;
   }
 
-  VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT] = {Vulkan.desc_set_layout, Vulkan.desc_set_layout};
+  VkDescriptorSetLayout layouts[MAX_FRAMES_IN_FLIGHT] = {g_desc_set_layout, g_desc_set_layout};
   VkDescriptorSetAllocateInfo desc_set_alloc_info = {
     .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-    .descriptorPool = Vulkan.desc_pool,
+    .descriptorPool = g_desc_pool,
     .descriptorSetCount = MAX_FRAMES_IN_FLIGHT,
     .pSetLayouts = layouts,
   };
-  if (vkAllocateDescriptorSets(Vulkan.device, &desc_set_alloc_info, Vulkan.desc_set) != VK_SUCCESS) {
+  if (vkAllocateDescriptorSets(g_device, &desc_set_alloc_info, g_desc_set) != VK_SUCCESS) {
     fprintf(stderr, "failed to allocate descriptor sets\n");
   }
   for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-    VkDescriptorBufferInfo buf_info = {
-      .buffer = Vulkan.ubuf[i],
+    VkDescriptorBufferInfo ubuf_info = {
+      .buffer = g_ubuf[i],
       .offset = 0,
-      .range = sizeof(UBO),
+      .range = g_ubuf_sz,
     };
-    VkWriteDescriptorSet desc_write = {
-      .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-      .dstSet = Vulkan.desc_set[i],
-      .dstBinding = 0,
-      .dstArrayElement = 0,
-      .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-      .descriptorCount = 1,
-      .pBufferInfo = &buf_info,
+    VkDescriptorBufferInfo sbuf_info = {
+      .buffer = g_sbuf,
+      .offset = 0,
+      .range = g_sbuf_sz,
     };
-    vkUpdateDescriptorSets(Vulkan.device, 1, &desc_write, 0, NULL);
+    VkWriteDescriptorSet desc_write[2] = {
+      {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = g_desc_set[i],
+        .dstBinding = 0,
+        .dstArrayElement = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+        .descriptorCount = 1,
+        .pBufferInfo = &ubuf_info,
+      },
+      {
+        .sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+        .dstSet = g_desc_set[i],
+        .dstBinding = 1,
+        .dstArrayElement = 0,
+        .descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        .descriptorCount = 1,
+        .pBufferInfo = &sbuf_info,
+      },
+    };
+    vkUpdateDescriptorSets(g_device, 2, desc_write, 0, NULL);
   }
 
   return true;
@@ -783,9 +816,9 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
 
 void screen_to_world(float x, float y, vec2 dst) {
   mat4 mat;
-  glm_mat4_mul(ubo.proj, ubo.view, mat);
+  glm_mat4_mul(g_ubo.proj, g_ubo.view, mat);
   glm_mat4_inv(mat, mat);
-  vec4 vec = {x/(Vulkan.swap_extent.width/2), y/(Vulkan.swap_extent.height/2), 1, 1};
+  vec4 vec = {x/(g_swap_extent.width/2), y/(g_swap_extent.height/2), 1, 1};
   glm_mat4_mulv(mat, vec, vec);
   vec[3] = 1 / vec[3];
   vec[0] *= vec[3];
@@ -794,25 +827,15 @@ void screen_to_world(float x, float y, vec2 dst) {
   dst[1] = vec[1];
 }
 
-QuadData quad_data[MAX_FRAMES_IN_FLIGHT][MAX_QUADS];
-
-typedef struct RenderContext {
-  size_t quad_index;
-  uint32_t swap_index;
-  uint32_t frame_index;
-} RenderContext;
-
-RenderContext ctxs[MAX_FRAMES_IN_FLIGHT];
-
 void begin_render() {
-  VkFence fence = Vulkan.fence[Vulkan.frame_index];
-  VkSemaphore sig_ready = Vulkan.sig_ready[Vulkan.frame_index];
+  VkFence fence = g_fence[g_frame_index];
+  VkSemaphore sig_ready = g_sig_ready[g_frame_index];
 
-  vkWaitForFences(Vulkan.device, 1, &fence, VK_TRUE, UINT64_MAX);
-  vkResetFences(Vulkan.device, 1, &fence);
+  vkWaitForFences(g_device, 1, &fence, VK_TRUE, UINT64_MAX);
+  vkResetFences(g_device, 1, &fence);
 
   uint32_t swap_index = 0;
-  VkResult acquire_image_res = vkAcquireNextImageKHR(Vulkan.device, Vulkan.swap_chain, UINT64_MAX, sig_ready, VK_NULL_HANDLE, &swap_index);
+  VkResult acquire_image_res = vkAcquireNextImageKHR(g_device, g_swap_chain, UINT64_MAX, sig_ready, VK_NULL_HANDLE, &swap_index);
   if (acquire_image_res == VK_ERROR_OUT_OF_DATE_KHR || acquire_image_res == VK_SUBOPTIMAL_KHR) {
     create_swapchain();
   } else if (acquire_image_res != VK_SUCCESS) {
@@ -820,42 +843,75 @@ void begin_render() {
     return;
   }
 
-  uint32_t frame_index = Vulkan.frame_index;
-
-  ctxs[frame_index].quad_index = 0;
-  ctxs[frame_index].swap_index = swap_index;
-  ctxs[frame_index].frame_index = frame_index;
+  g_ctx[g_frame_index].triangle_index = 0;
+  g_ctx[g_frame_index].swap_index = swap_index;
 }
 
 void draw_quad(QuadData data) {
-  RenderContext* ctx = &ctxs[Vulkan.frame_index];
-  if (ctx->quad_index >= MAX_QUADS) {
+  RenderContext* ctx = &g_ctx[g_frame_index];
+  if (ctx->triangle_index + 1 >= MAX_TRIANGLES) {
     fprintf(stderr, "ran out of vertex buffer space\n");
     return;
   }
-  quad_data[ctx->frame_index][ctx->quad_index++] = data;
+
+  float x1 = -data.w/2;
+  float x2 = +data.w/2;
+  float y1 = -data.h/2;
+  float y2 = +data.h/2;
+
+  g_triangle_data[g_frame_index][ctx->triangle_index++] = (TriangleData){
+    .ox = data.x, .oy = data.y, .angle = data.angle,
+    .x1 = x1, .y1 = y1,
+    .x2 = x1, .y2 = y2,
+    .x3 = x2, .y3 = y2,
+    .r = data.r, .g = data.g, .b = data.b,
+  };
+  g_triangle_data[g_frame_index][ctx->triangle_index++] = (TriangleData){
+    .ox = data.x, .oy = data.y, .angle = data.angle,
+    .x1 = x1, .y1 = y1,
+    .x2 = x2, .y2 = y2,
+    .x3 = x2, .y3 = y1,
+    .r = data.r, .g = data.g, .b = data.b,
+  };
+}
+void draw_triangle(TriangleData data) {
+  RenderContext* ctx = &g_ctx[g_frame_index];
+  if (ctx->triangle_index >= MAX_TRIANGLES) {
+    fprintf(stderr, "ran out of vertex buffer space\n");
+    return;
+  }
+  g_triangle_data[g_frame_index][ctx->triangle_index++] = data;
 }
 
 void end_render() {
-  RenderContext* ctx = &ctxs[Vulkan.frame_index];
-  memcpy(Vulkan.ubuf_map[ctx->frame_index], &ubo, sizeof(UBO));
+  RenderContext* ctx = &g_ctx[g_frame_index];
+  memcpy(g_ubuf_map[g_frame_index], &g_ubo, sizeof(UBO));
 
-  VkQuad* p = Vulkan.vbuf_stg_map;
-  QuadData* quads = quad_data[ctx->frame_index];
-  for (size_t i=0; i < ctx->quad_index; i++) {
-    QuadData data = quads[i];
-    VkQuad vector_data = {
-      {{-data.w/2,-data.h/2}, {data.r,data.g,data.b}},
-      {{-data.w/2, data.h/2}, {data.r,data.g,data.b}},
-      {{ data.w/2,-data.h/2}, {data.r,data.g,data.b}},
-      {{ data.w/2, data.h/2}, {data.r,data.g,data.b}},
+  VkTriangle* vbuf_stg_map = g_vbuf_stg_map;
+  VkTriangleAttr* sbuf_stg_map = g_sbuf_stg_map;
+  TriangleData* triangles = g_triangle_data[g_frame_index];
+  for (size_t i=0; i < ctx->triangle_index; i++) {
+    TriangleData* data = &triangles[i];
+    VkTriangle vector_data = {
+      {{data->x1, data->y1}, .triangle_id = i},
+      {{data->x2, data->y2}, .triangle_id = i},
+      {{data->x3, data->y3}, .triangle_id = i},
     };
-    memcpy(p, &vector_data, sizeof(VkQuad));
-    p++;
-  }
-  copy_buffer(Vulkan.vbuf_stg, Vulkan.vbuf, Vulkan.vbuf_sz);
+    memcpy(vbuf_stg_map, &vector_data, sizeof(VkTriangle));
+    vbuf_stg_map++;
 
-  VkCommandBuffer command_buffer = Vulkan.command_buffer[ctx->frame_index];
+    VkTriangleAttr attr_data = { .color = {data->r, data->g, data->b} };
+    glm_mat4_identity(attr_data.transform);
+    vec3 point = {data->ox, data->oy, 0};
+    glm_translate(attr_data.transform, point);
+    glm_rotate(attr_data.transform, data->angle, (vec3){0,0,1});
+    memcpy(sbuf_stg_map, &attr_data, sizeof(VkTriangleAttr));
+    sbuf_stg_map++;
+  }
+  copy_buffer(g_vbuf_stg, g_vbuf, sizeof(VkTriangle) * ctx->triangle_index);
+  copy_buffer(g_sbuf_stg, g_sbuf, sizeof(VkTriangleAttr) * ctx->triangle_index);
+
+  VkCommandBuffer command_buffer = g_command_buffer[g_frame_index];
   vkResetCommandBuffer(command_buffer, 0);
   if (vkBeginCommandBuffer(command_buffer, &(VkCommandBufferBeginInfo) { .sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO }) != VK_SUCCESS) {
     fprintf(stderr, "failed to begin recording command buffer\n");
@@ -863,47 +919,37 @@ void end_render() {
   VkClearValue clear = { .color = { .float32 = {0.0f, 0.0f, 0.0f, 1.0f} } };
   VkRenderPassBeginInfo pass_info = {
     .sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-    .renderPass = Vulkan.render_pass,
-    .framebuffer = Vulkan.frame_buffers[ctx->swap_index],
+    .renderPass = g_render_pass,
+    .framebuffer = g_frame_buffers[ctx->swap_index],
     .renderArea = {
       .offset = {0, 0},
-      .extent = Vulkan.swap_extent,
+      .extent = g_swap_extent,
     },
     .clearValueCount = 1,
     .pClearValues = &clear,
   };
   vkCmdBeginRenderPass(command_buffer, &pass_info, VK_SUBPASS_CONTENTS_INLINE);
-  vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Vulkan.pipeline);
+  vkCmdBindPipeline(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_pipeline);
 
   VkDeviceSize vbuf_offsets = {0};
-  vkCmdBindVertexBuffers(command_buffer, 0, 1, &Vulkan.vbuf, &vbuf_offsets);
-  vkCmdBindIndexBuffer(command_buffer, Vulkan.vbuf_idx, 0, VK_INDEX_TYPE_UINT16);
-  vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, Vulkan.pipeline_layout, 0, 1, &Vulkan.desc_set[ctx->frame_index], 0, NULL);
+  vkCmdBindVertexBuffers(command_buffer, 0, 1, &g_vbuf, &vbuf_offsets);
+  vkCmdBindDescriptorSets(command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, g_pipeline_layout, 0, 1, &g_desc_set[g_frame_index], 0, NULL);
 
   VkViewport viewport = {
     .x = 0.0f,
     .y = 0.0f,
-    .width = (float) Vulkan.swap_extent.width,
-    .height = (float) Vulkan.swap_extent.height,
+    .width = (float) g_swap_extent.width,
+    .height = (float) g_swap_extent.height,
     .minDepth = 0.0f,
     .maxDepth = 1.0f,
   };
   vkCmdSetViewport(command_buffer, 0, 1, &viewport);
   VkRect2D scissor = {
     .offset = {0, 0},
-    .extent = Vulkan.swap_extent,
+    .extent = g_swap_extent,
   };
   vkCmdSetScissor(command_buffer, 0, 1, &scissor);
-  for (size_t i=0; i < ctx->quad_index; i++) {
-    QuadData data = quads[i];
-    mat4 model;
-    glm_mat4_identity(model);
-    vec3 point = {data.x, data.y, 0};
-    glm_translate(model, point);
-    glm_rotate(model, data.a, (vec3){0,0,1});
-    vkCmdPushConstants(command_buffer, Vulkan.pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(mat4), &model);
-    vkCmdDrawIndexed(command_buffer, 6, 1, 0, 4 * i, 0);
-  }
+  vkCmdDraw(command_buffer, 3 * ctx->triangle_index, 1, 0, 0);
   vkCmdEndRenderPass(command_buffer);
   if (vkEndCommandBuffer(command_buffer) != VK_SUCCESS) {
     fprintf(stderr, "failed to record command buffer\n");
@@ -911,9 +957,9 @@ void end_render() {
 
   VkQueue queue = get_graphics_queue();
 
-  VkSemaphore sig_ready = Vulkan.sig_ready[ctx->frame_index];
-  VkSemaphore sig_rendered = Vulkan.sig_rendered[ctx->frame_index];
-  VkFence fence = Vulkan.fence[ctx->frame_index];
+  VkSemaphore sig_ready = g_sig_ready[g_frame_index];
+  VkSemaphore sig_rendered = g_sig_rendered[g_frame_index];
+  VkFence fence = g_fence[g_frame_index];
   VkSubmitInfo submit = {
     .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
     .waitSemaphoreCount = 1,
@@ -933,10 +979,10 @@ void end_render() {
     .waitSemaphoreCount = 1,
     .pWaitSemaphores = &sig_rendered,
     .swapchainCount = 1,
-    .pSwapchains = &Vulkan.swap_chain,
+    .pSwapchains = &g_swap_chain,
     .pImageIndices = &ctx->swap_index,
   };
   vkQueuePresentKHR(queue, &present);
 
-  Vulkan.frame_index = (Vulkan.frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
+  g_frame_index = (g_frame_index + 1) % MAX_FRAMES_IN_FLIGHT;
 }

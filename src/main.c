@@ -9,7 +9,7 @@
 #include "entity.h"
 #include "graphics.h"
 
-char* app_path;
+static char* app_path;
 
 bool init(const char* app_path0, VkInstance instance, VkSurfaceKHR surface, uint32_t width, uint32_t height) {
   size_t len = strlen(app_path0);
@@ -92,7 +92,7 @@ typedef struct EntityUpdateData {
 //   entity->angle += entity->velocity.a * data->ms;
 // }
 
-float dist(float x, float y) {
+static float dist(float x, float y) {
   return sqrt(x*x + y*y);
 }
 
@@ -157,6 +157,10 @@ bool tick(size_t ms) {
   update_entities();
 
   begin_render();
+  draw_triangle((TriangleData){
+    .x1 = 0, .y1 = 0, .x2 = 0.8, .y2 = 0.5, .x3 = 1, .y3 = 0,
+    .r = 1, .g = 1,
+  });
   render_entities();
   end_render();
 
