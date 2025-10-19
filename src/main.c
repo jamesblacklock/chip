@@ -53,54 +53,7 @@ void cleanup() {
   cleanup_vulkan();
 }
 
-typedef struct EntityUpdateData {
-  Entity* bloop;
-  size_t ms;
-} EntityUpdateData;
-
-// void update_entity(Entity* entity, void* _data) {
-//   EntityUpdateData* data = _data;
-//   if (entity == data->bloop) {
-//     return;
-//   }
-//   if (fabsf(entity->velocity.x) < 0.001) {
-//     entity->velocity.x = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-//     entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-//   }
-//   if (fabsf(entity->velocity.y) < 0.001) {
-//     entity->velocity.y = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-//     entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-//   }
-//   if (entity->velocity.x > 0 && entity_to_window(entity->x) > window.width/2) {
-//     entity->velocity.x = -entity->velocity.x;
-//     entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-//   }
-//   if (entity->velocity.x < 0 && entity_to_window(-entity->x) > window.width/2) {
-//     entity->velocity.x = -entity->velocity.x;
-//     entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-//   }
-//   if (entity->velocity.y > 0 && entity_to_window(entity->y) > window.height/2) {
-//     entity->velocity.y = -entity->velocity.y;
-//     entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-//   }
-//   if (entity->velocity.y < 0 && entity_to_window(-entity->y) > window.height/2) {
-//     entity->velocity.y = -entity->velocity.y;
-//     entity->velocity.a = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-//   }
-//   entity->x += entity->velocity.x * data->ms;
-//   entity->y += entity->velocity.y * data->ms;
-//   entity->angle += entity->velocity.a * data->ms;
-// }
-
-static float dist(float x, float y) {
-  return sqrt(x*x + y*y);
-}
-
-bool tick(size_t ms) {
-  if (window.closed) {
-    return false;
-  }
-
+static void box_drop() {
   static bool m = false;
   static float drag_x;
   static float drag_y;
@@ -125,42 +78,213 @@ bool tick(size_t ms) {
     bloop->x = x1 + bloop->w/2;
     bloop->h = y2 - y1;
     bloop->y = y1 + bloop->h/2;
-    // // DO NOT DELETE -- drawing a line
-    // float x1 = window_to_entity(drag_x);
-    // float x2 = window_to_entity(window.mouse_x);
-    // float y1 = window_to_entity(drag_y);
-    // float y2 = window_to_entity(window.mouse_y);
-    // float dx = x2-x1;
-    // float dy = y2-y1;
-    // bloop->angle = atan(dy/dx);
-    // if (window.keys[KEY_LSHIFT]) {
-    //   bloop->angle = round(bloop->angle / (M_PI/8)) * (M_PI/8);
-    //   float dist_xy = dist(dx, dy);
-    //   float x_sign = dx < 0 ? -1 : 1;
-    //   float y_sign = dy < 0 ? -1 : 1;
-    //   dx = fabs(cos(bloop->angle)) * dist_xy * x_sign;
-    //   dy = fabs(sin(bloop->angle)) * dist_xy * y_sign;
-    // }
-    // bloop->w = dist(dx, dy);
-    // bloop->x = dx/2 + x1;
-    // bloop->y = dy/2 + y1;
   }
   if (!window.mouse_left && bloop) {
     attach_body(bloop, window.keys[KEY_LSHIFT]);
     bloop = NULL;
   }
   m = window.mouse_left;
-  
-  // visit_entities(update_entity, &(EntityUpdateData){ .bloop = bloop, .ms = ms });
 
   b2World_Step(world, 1.0/60.0, 10);
   update_entities();
+}
+
+typedef struct EntityUpdateData {
+  Entity* bloop;
+  size_t ms;
+} EntityUpdateData;
+
+static void box_screensaver_update_entity(Entity* entity, void* _data) {
+  EntityUpdateData* data = _data;
+  if (entity == data->bloop) {
+    return;
+  }
+  if (fabsf(entity->velocity.x) < 0.001) {
+    entity->velocity.x = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+    entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
+  }
+  if (fabsf(entity->velocity.y) < 0.001) {
+    entity->velocity.y = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+    entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
+  }
+  if (entity->velocity.x > 0 && entity_to_screen(entity->x) > window.width/2) {
+    entity->velocity.x = -entity->velocity.x;
+    entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
+  }
+  if (entity->velocity.x < 0 && entity_to_screen(-entity->x) > window.width/2) {
+    entity->velocity.x = -entity->velocity.x;
+    entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
+  }
+  if (entity->velocity.y > 0 && entity_to_screen(entity->y) > window.height/2) {
+    entity->velocity.y = -entity->velocity.y;
+    entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
+  }
+  if (entity->velocity.y < 0 && entity_to_screen(-entity->y) > window.height/2) {
+    entity->velocity.y = -entity->velocity.y;
+    entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
+  }
+  entity->x += entity->velocity.x * data->ms;
+  entity->y += entity->velocity.y * data->ms;
+  entity->angle += entity->velocity.a * data->ms;
+}
+
+static void box_screensaver(size_t ms) {
+  static bool m = false;
+  static float drag_x;
+  static float drag_y;
+  static Entity* bloop = NULL;
+  if (!m && window.mouse_left) {
+    drag_x = window.mouse_x;
+    drag_y = window.mouse_y;
+    m = true;
+    float r = rand() / (float) RAND_MAX;
+    float g = rand() / (float) RAND_MAX;
+    float b = rand() / (float) RAND_MAX;
+    float x = window_to_entity(drag_x);
+    float y = window_to_entity(drag_y);
+    bloop = create_entity((Entity){ .w = 1, .h = 1, .x = x, .y = y, .color = {r,g,b} });
+  }
+  if (m && window.mouse_left && bloop) {
+    float x1 = window_to_entity(fmin(window.mouse_x, drag_x));
+    float x2 = window_to_entity(fmax(window.mouse_x, drag_x));
+    float y1 = window_to_entity(fmin(window.mouse_y, drag_y));
+    float y2 = window_to_entity(fmax(window.mouse_y, drag_y));
+    bloop->w = x2 - x1;
+    bloop->x = x1 + bloop->w/2;
+    bloop->h = y2 - y1;
+    bloop->y = y1 + bloop->h/2;
+  }
+  if (!window.mouse_left && bloop) {
+    bloop = NULL;
+  }
+  m = window.mouse_left;
+  
+  visit_entities(box_screensaver_update_entity, &(EntityUpdateData){ .bloop = bloop, .ms = ms });
+}
+
+static void draw_polygons() {
+  typedef struct Polygon {
+    float* points;
+    size_t count;
+  } Polygon;
+
+  static Polygon polys[100];
+  static size_t poly_index;
+  static bool mouse_down = false;
+  static bool closing = false;
+  const size_t MAX_POINTS = 100;
+  static float points[MAX_POINTS][2];
+  static ptrdiff_t point_index = -1;
+
+  float x = window_to_entity(window.mouse_x);
+  float y = window_to_entity(window.mouse_y);
+
+  float grid_snap = window.keys[KEY_LALT] ? 5 : 10;
+  float angle_snap = window.keys[KEY_LALT] ? M_PI/16 : M_PI/4;
+
+  if (window.keys[KEY_LCTRL]) {
+    x = round(x / grid_snap) * grid_snap;
+    y = round(y / grid_snap) * grid_snap;
+  }
+
+  if (!mouse_down && window.mouse_left) {
+    if (closing) {
+      size_t count = point_index;
+      Polygon p = {
+        .count = count,
+        .points = malloc(sizeof(float) * count * 2),
+      };
+      for (size_t i=0; i < count; i++) {
+        p.points[i*2] = points[i][0];
+        p.points[i*2+1] = points[i][1];
+      }
+      polys[poly_index++] = p;
+      point_index = -1;
+      closing = false;
+    } else {
+      if (point_index < 0) {
+        points[0][0] = points[1][0] = x;
+        points[0][1] = points[1][1] = y;
+        point_index = 0;
+      }
+      point_index++;
+    }
+  }
+  if (point_index > 0) {
+    if (window.keys[KEY_LSHIFT]) {
+      float prev_x = points[point_index-1][0];
+      float prev_y = points[point_index-1][1];
+      float dx = x - prev_x;
+      float dy = y - prev_y;
+      float angle = atan(dy/dx);
+      angle = round(angle / angle_snap) * angle_snap;
+      float dist_xy = sqrt(dx*dx + dy*dy);
+      float x_sign = dx < 0 ? -1 : 1;
+      float y_sign = dy < 0 ? -1 : 1;
+      dx = fabs(cos(angle)) * dist_xy * x_sign;
+      dy = fabs(sin(angle)) * dist_xy * y_sign;
+      x = dx + prev_x;
+      y = dy + prev_y;
+    }
+
+    closing = point_index > 2 && !window.keys[KEY_LALT] && fabsf(x - points[0][0]) < 6 && fabsf(y - points[0][1]) < 6;
+    if (closing) {
+      x = points[0][0];
+      y = points[0][1];
+    }
+    points[point_index][0] = x;
+    points[point_index][1] = y;
+  }
+  mouse_down = window.mouse_left;
+
+  if (point_index > 0) {
+    for (size_t i=0; i < point_index; i++) {
+      float x1 = entity_to_screen(points[i][0]);
+      float x2 = entity_to_screen(points[i+1][0]);
+      float y1 = entity_to_screen(points[i][1]);
+      float y2 = entity_to_screen(points[i+1][1]);
+      float p1[2], p2[2];
+      screen_to_world(x1, y1, p1);
+      screen_to_world(x2, y2, p2);
+      draw_line((LineData){
+        .x1 = p1[0],
+        .y1 = p1[1],
+        .x2 = p2[0],
+        .y2 = p2[1],
+        .w = screen_x_to_world(entity_to_screen(1)),
+        .r = 1, .g = 1,
+      });
+    }
+  }
+  for (size_t i=0; i < poly_index; i++) {
+    for (size_t j=0; j < polys[i].count; j++) {
+      size_t next_index = (j+1) % polys[i].count;
+      float x1 = entity_to_screen(polys[i].points[j*2]);
+      float x2 = entity_to_screen(polys[i].points[next_index*2]);
+      float y1 = entity_to_screen(polys[i].points[j*2+1]);
+      float y2 = entity_to_screen(polys[i].points[next_index*2+1]);
+      float p1[2], p2[2];
+      screen_to_world(x1, y1, p1);
+      screen_to_world(x2, y2, p2);
+      draw_line((LineData){
+        .x1 = p1[0],
+        .y1 = p1[1],
+        .x2 = p2[0],
+        .y2 = p2[1],
+        .w = screen_x_to_world(entity_to_screen(1)),
+        .r = 1, .g = 1,
+      });
+    }
+  }
+}
+
+bool tick(size_t ms) {
+  if (window.closed) {
+    return false;
+  }
 
   begin_render();
-  draw_triangle((TriangleData){
-    .x1 = 0, .y1 = 0, .x2 = 0.8, .y2 = 0.5, .x3 = 1, .y3 = 0,
-    .r = 1, .g = 1,
-  });
+  draw_polygons();
   render_entities();
   end_render();
 

@@ -826,6 +826,16 @@ void screen_to_world(float x, float y, vec2 dst) {
   dst[0] = vec[0];
   dst[1] = vec[1];
 }
+float screen_x_to_world(float x) {
+  vec2 res;
+  screen_to_world(x, 0, res);
+  return res[0];
+}
+float screen_y_to_world(float y) {
+  vec2 res;
+  screen_to_world(0, y, res);
+  return res[1];
+}
 
 void begin_render() {
   VkFence fence = g_fence[g_frame_index];
@@ -873,6 +883,23 @@ void draw_quad(QuadData data) {
     .x3 = x2, .y3 = y1,
     .r = data.r, .g = data.g, .b = data.b,
   };
+}
+static float dist(float x, float y) {
+  return sqrt(x*x + y*y);
+}
+void draw_line(LineData data) {
+  float dx = data.x2 - data.x1;
+  float dy = data.y2 - data.y1;
+  draw_quad((QuadData){
+    .x = dx/2 + data.x1,
+    .y = dy/2 + data.y1,
+    .w = dist(dx, dy),
+    .h = data.w,
+    .angle = atan(dy/dx),
+    .r = data.r,
+    .g = data.g,
+    .b = data.b,
+  });
 }
 void draw_triangle(TriangleData data) {
   RenderContext* ctx = &g_ctx[g_frame_index];

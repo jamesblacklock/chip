@@ -18,6 +18,7 @@ void init_entities() {
   entity_globals.pixart_unit = fmax(1, round(sqrt(window.width * window.height) / 548.63467));
   for (size_t i=0; i < ENTITY_COUNT; i++) {
     available[i] = ENTITY_COUNT - i - 1;
+    entities[i].index = i;
   }
 
   b2WorldDef worldDef = b2DefaultWorldDef();
@@ -38,7 +39,7 @@ float window_to_entity(float n) {
   return n / entity_globals.pixart_unit;
 }
 
-float entity_to_window(float n) {
+float entity_to_screen(float n) {
   return n * entity_globals.pixart_unit;
 }
 
@@ -51,6 +52,14 @@ Entity* create_entity(Entity new_a) {
   new_a.live = true;
   *slot = new_a;
   return slot;
+}
+
+void destroy_entity(Entity* entity) {
+  if (!entity->live) {
+    return;
+  }
+  entity->live = false;
+  available[available_idx++] = entity->index;
 }
 
 void attach_body(Entity* entity, bool dynamic) {
@@ -74,8 +83,8 @@ void attach_body(Entity* entity, bool dynamic) {
 static void render_entity(Entity* entity, void* _data) {
   float pos[2];
   float sz[2];
-  screen_to_world(entity_to_window(entity->x), entity_to_window(entity->y), pos);
-  screen_to_world(entity_to_window(entity->w), entity_to_window(entity->h), sz);
+  screen_to_world(entity_to_screen(entity->x), entity_to_screen(entity->y), pos);
+  screen_to_world(entity_to_screen(entity->w), entity_to_screen(entity->h), sz);
   draw_quad((QuadData){
     .x = pos[0],
     .y = pos[1],
