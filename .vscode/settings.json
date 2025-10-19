@@ -90,7 +90,8 @@
     "chipmunk.h": "c",
     "entity.h": "c",
     "window.h": "c",
-    "graphics.h": "c"
+    "graphics.h": "c",
+    "freelist.h": "c"
   },
   "search.useIgnoreFiles": false
 }

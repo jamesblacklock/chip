@@ -1,0 +1,94 @@
+#include <stdbool.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+#ifndef FREELIST_DATATYPE
+#define FREELIST_DATATYPE int
+#endif
+
+#define FREELIST_SYMBOL_(type, name) type ## _ ## name
+#define FREELIST_SYMBOL(type, name) FREELIST_SYMBOL_(type, name)
+
+#define FREELIST_DATATYPE_STR__(type) #type
+#define FREELIST_DATATYPE_STR_(type) FREELIST_DATATYPE_STR__(type)
+#define FREELIST_ITEM_(x) FREELIST_SYMBOL(FREELIST_DATATYPE, FreelistItem)
+#define FREELIST_HEAP_(x) FREELIST_SYMBOL(FREELIST_DATATYPE, FreelistHeap)
+#define FREELIST_(x) FREELIST_SYMBOL(FREELIST_DATATYPE, Freelist)
+#define FREELIST_INDEX_(x) FREELIST_SYMBOL(FREELIST_DATATYPE, FreelistIndex)
+#define FREELIST_SIZE_(x) FREELIST_SYMBOL(FREELIST_DATATYPE, FreelistSize)
+#define FREELIST_ALLOC_(x) FREELIST_SYMBOL(FREELIST_DATATYPE, FreelistAlloc)
+#define FREELIST_GROW_(x) FREELIST_SYMBOL(FREELIST_DATATYPE, FreelistGrow)
+#define FREELIST_FREE_(x) FREELIST_SYMBOL(FREELIST_DATATYPE, FreelistFree)
+#define FREELIST_INIT_(x) FREELIST_SYMBOL(FREELIST_DATATYPE, FreelistInit)
+#define FREELIST_INITIALIZED_(x) FREELIST_SYMBOL(FREELIST_DATATYPE, FreelistInitialized)
+
+#define FREELIST_DATATYPE_STR FREELIST_DATATYPE_STR_(FREELIST_DATATYPE)
+#define FREELIST_ITEM FREELIST_ITEM_(FREELIST_DATATYPE)
+#define FREELIST_HEAP FREELIST_HEAP_(FREELIST_DATATYPE)
+#define FREELIST FREELIST_(FREELIST_DATATYPE)
+#define FREELIST_INDEX FREELIST_INDEX_(FREELIST_DATATYPE)
+#define FREELIST_SIZE FREELIST_SIZE_(FREELIST_DATATYPE)
+#define FREELIST_ALLOC FREELIST_ALLOC_(FREELIST_DATATYPE)
+#define FREELIST_GROW FREELIST_GROW_(FREELIST_DATATYPE)
+#define FREELIST_FREE FREELIST_FREE_(FREELIST_DATATYPE)
+#define FREELIST_INIT FREELIST_INIT_(FREELIST_DATATYPE)
+#define FREELIST_INITIALIZED FREELIST_INITIALIZED_(FREELIST_DATATYPE)
+
+typedef struct FREELIST_ITEM  {
+  FREELIST_DATATYPE item;
+  size_t index;
+  bool live;
+} FREELIST_ITEM;
+
+
+static FREELIST_ITEM* FREELIST_HEAP;
+static size_t* FREELIST;
+static size_t FREELIST_INDEX;
+static size_t FREELIST_SIZE;
+static bool FREELIST_INITIALIZED;
+
+static void FREELIST_INIT(size_t initial_heap) {
+  FREELIST_SIZE = initial_heap;
+  FREELIST_HEAP = malloc(sizeof(FREELIST_ITEM) * FREELIST_SIZE);
+  FREELIST = malloc(sizeof(size_t) * FREELIST_SIZE);
+  for (size_t i=0; i < FREELIST_SIZE; i++) {
+    FREELIST[i] = i;
+    FREELIST_HEAP[i].index = i;
+  }
+  FREELIST_INDEX = FREELIST_SIZE - 1;
+  FREELIST_INITIALIZED = true;
+}
+
+static void FREELIST_GROW() {
+  size_t prev_size = FREELIST_SIZE;
+  size_t new_count = FREELIST_SIZE;
+  FREELIST_SIZE += new_count;
+  FREELIST_HEAP = realloc(FREELIST_HEAP, sizeof(FREELIST_ITEM) * FREELIST_SIZE);
+  FREELIST = realloc(FREELIST, sizeof(size_t) * FREELIST_SIZE);
+  for (size_t i=0; i < new_count; i++) {
+    FREELIST[i] = prev_size + i;
+    FREELIST_HEAP[prev_size + i].index = prev_size + i;
+  }
+  FREELIST_INDEX = new_count - 1;
+  printf("grew freelist for type %s from %zu => %zu\n", FREELIST_DATATYPE_STR, prev_size, FREELIST_SIZE);
+}
+
+static FREELIST_DATATYPE* FREELIST_ALLOC() {
+  if (FREELIST_INDEX == 0) {
+    if (FREELIST_INITIALIZED) {
+      FREELIST_GROW();
+    } else {
+      FREELIST_INIT(1000);
+    }
+    return FREELIST_ALLOC();
+  }
+  size_t i = FREELIST[FREELIST_INDEX--];
+  FREELIST_HEAP[i].live = true;
+  return &FREELIST_HEAP[i].item;
+}
+
+static void FREELIST_FREE(FREELIST_DATATYPE* item) {
+  FREELIST_ITEM* p = (FREELIST_ITEM*) item;
+  p->live = false;
+  FREELIST[FREELIST_INDEX++] = p->index;
+}

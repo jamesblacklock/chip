@@ -40,15 +40,21 @@ typedef struct TriangleData {
   float angle;
 } TriangleData;
 
-void begin_render();
-void end_render();
-void draw_quad(QuadData data);
-void draw_triangle(TriangleData data);
-void draw_line(LineData data);
-void screen_to_world(float x, float y, float dst[2]);
-float screen_x_to_world(float x);
-float screen_y_to_world(float y);
-bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, uint32_t fb_height);
-void cleanup_vulkan();
+#ifdef __cplusplus
+#define EXTERN_C extern "C"
+#else
+#define EXTERN_C 
+#endif
+
+EXTERN_C void begin_render();
+EXTERN_C void end_render();
+EXTERN_C void draw_quad(QuadData data);
+EXTERN_C void draw_triangle(TriangleData data);
+EXTERN_C void draw_line(LineData data);
+EXTERN_C void screen_to_world(float x, float y, float dst[2]);
+EXTERN_C float screen_x_to_world(float x);
+EXTERN_C float screen_y_to_world(float y);
+EXTERN_C bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, uint32_t fb_height);
+EXTERN_C void cleanup_vulkan();
 
 #endif

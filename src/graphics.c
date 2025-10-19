@@ -907,6 +907,15 @@ void draw_triangle(TriangleData data) {
     fprintf(stderr, "ran out of vertex buffer space\n");
     return;
   }
+  float area = (data.x2 - data.x1) * (data.y3 - data.y1) - (data.y2 - data.y1) * (data.x3 - data.x1);
+  if (area > 0) {
+    float x_tmp = data.x2;
+    float y_tmp = data.y2;
+    data.x2 = data.x3;
+    data.y2 = data.y3;
+    data.x3 = x_tmp;
+    data.y3 = y_tmp;
+  }
   g_triangle_data[g_frame_index][ctx->triangle_index++] = data;
 }
 

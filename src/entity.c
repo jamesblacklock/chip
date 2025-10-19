@@ -7,31 +7,25 @@
 
 EntityGlobals entity_globals;
 
-static const size_t ENTITY_COUNT = 1000;
-static Entity entities[ENTITY_COUNT];
-static size_t available[ENTITY_COUNT] = {};
-static size_t available_idx = ENTITY_COUNT - 1;
+#define FREELIST_DATATYPE Entity
+#include "freelist.h"
 
 b2WorldId world;
 
 void init_entities() {
+  Entity_FreelistInit(4);
   entity_globals.pixart_unit = fmax(1, round(sqrt(window.width * window.height) / 548.63467));
-  for (size_t i=0; i < ENTITY_COUNT; i++) {
-    available[i] = ENTITY_COUNT - i - 1;
-    entities[i].index = i;
-  }
-
   b2WorldDef worldDef = b2DefaultWorldDef();
   worldDef.gravity = (b2Vec2){0.0f, 100.0f};
   world = b2CreateWorld(&worldDef);
 }
 
 void visit_entities(void (*visitor)(Entity*, void*), void* data) {
-  for (size_t i=0; i < ENTITY_COUNT; i++) {
-    if (!entities[i].live) {
+  for (size_t i=0; i < Entity_FreelistSize; i++) {
+    if (!Entity_FreelistHeap[i].live) {
       continue;
     }
-    visitor(&entities[i], data);
+    visitor(&Entity_FreelistHeap[i].item, data);
   }
 }
 
@@ -43,23 +37,14 @@ float entity_to_screen(float n) {
   return n * entity_globals.pixart_unit;
 }
 
-Entity* create_entity(Entity new_a) {
-  if (available_idx == 0) {
-    return NULL;
-  }
-  size_t i = available[available_idx--];
-  Entity* slot = &entities[i];
-  new_a.live = true;
-  *slot = new_a;
-  return slot;
+Entity* create_entity(Entity new_entity) {
+  Entity* entity = Entity_FreelistAlloc();
+  *entity = new_entity;
+  return entity;
 }
 
 void destroy_entity(Entity* entity) {
-  if (!entity->live) {
-    return;
-  }
-  entity->live = false;
-  available[available_idx++] = entity->index;
+  Entity_FreelistFree(entity);
 }
 
 void attach_body(Entity* entity, bool dynamic) {

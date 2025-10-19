@@ -28,18 +28,24 @@ typedef struct Entity {
   b2BodyId body;
 } Entity;
 
-Entity* create_entity(Entity new_entity);
-void destroy_entity(Entity* entity);
-void attach_body(Entity* entity, bool dynamic);
+#ifdef __cplusplus
+#define EXTERN_C extern "C"
+#else
+#define EXTERN_C 
+#endif
 
 extern EntityGlobals entity_globals;
 extern b2WorldId world;
 
-void init_entities();
-float window_to_entity(float x);
-float entity_to_screen(float x);
-void visit_entities(void (*visitor)(Entity*, void*), void* data);
-void render_entities();
-void update_entities();
+EXTERN_C Entity* create_entity(Entity new_entity);
+EXTERN_C void destroy_entity(Entity* entity);
+EXTERN_C void attach_body(Entity* entity, bool dynamic);
+
+EXTERN_C void init_entities();
+EXTERN_C float window_to_entity(float x);
+EXTERN_C float entity_to_screen(float x);
+EXTERN_C void visit_entities(void (*visitor)(Entity*, void*), void* data);
+EXTERN_C void render_entities();
+EXTERN_C void update_entities();
 
 #endif

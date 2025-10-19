@@ -8,6 +8,7 @@
 #include "window.h"
 #include "entity.h"
 #include "graphics.h"
+#include "polygon.h"
 
 static char* app_path;
 
@@ -163,13 +164,8 @@ static void box_screensaver(size_t ms) {
 }
 
 static void draw_polygons() {
-  typedef struct Polygon {
-    float* points;
-    size_t count;
-  } Polygon;
-
-  static Polygon polys[100];
-  static size_t poly_index;
+  static Polygon polygons[60000];
+  static size_t polygon_index;
   static bool mouse_down = false;
   static bool closing = false;
   const size_t MAX_POINTS = 100;
@@ -189,16 +185,7 @@ static void draw_polygons() {
 
   if (!mouse_down && window.mouse_left) {
     if (closing) {
-      size_t count = point_index;
-      Polygon p = {
-        .count = count,
-        .points = malloc(sizeof(float) * count * 2),
-      };
-      for (size_t i=0; i < count; i++) {
-        p.points[i*2] = points[i][0];
-        p.points[i*2+1] = points[i][1];
-      }
-      polys[poly_index++] = p;
+      polygons[polygon_index++] = create_polygon(points, point_index);
       point_index = -1;
       closing = false;
     } else {
@@ -207,7 +194,14 @@ static void draw_polygons() {
         points[0][1] = points[1][1] = y;
         point_index = 0;
       }
-      point_index++;
+      float prev_x = points[point_index-1][0];
+      float prev_y = points[point_index-1][1];
+      float dx = x - prev_x;
+      float dy = y - prev_y;
+      float dist_xy = sqrt(dx*dx + dy*dy);
+      if (dist_xy > 1) {
+        point_index++;
+      }
     }
   }
   if (point_index > 0) {
@@ -237,6 +231,9 @@ static void draw_polygons() {
   }
   mouse_down = window.mouse_left;
 
+  for (size_t i=0; i < polygon_index; i++) {
+    draw_polygon(&polygons[i]);
+  }
   if (point_index > 0) {
     for (size_t i=0; i < point_index; i++) {
       float x1 = entity_to_screen(points[i][0]);
@@ -252,27 +249,7 @@ static void draw_polygons() {
         .x2 = p2[0],
         .y2 = p2[1],
         .w = screen_x_to_world(entity_to_screen(1)),
-        .r = 1, .g = 1,
-      });
-    }
-  }
-  for (size_t i=0; i < poly_index; i++) {
-    for (size_t j=0; j < polys[i].count; j++) {
-      size_t next_index = (j+1) % polys[i].count;
-      float x1 = entity_to_screen(polys[i].points[j*2]);
-      float x2 = entity_to_screen(polys[i].points[next_index*2]);
-      float y1 = entity_to_screen(polys[i].points[j*2+1]);
-      float y2 = entity_to_screen(polys[i].points[next_index*2+1]);
-      float p1[2], p2[2];
-      screen_to_world(x1, y1, p1);
-      screen_to_world(x2, y2, p2);
-      draw_line((LineData){
-        .x1 = p1[0],
-        .y1 = p1[1],
-        .x2 = p2[0],
-        .y2 = p2[1],
-        .w = screen_x_to_world(entity_to_screen(1)),
-        .r = 1, .g = 1,
+        .r = 1,
       });
     }
   }
@@ -282,6 +259,8 @@ bool tick(size_t ms) {
   if (window.closed) {
     return false;
   }
+
+  // box_screensaver(ms);
 
   begin_render();
   draw_polygons();

@@ -14,24 +14,30 @@ exe_mod = stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR | stat.S_IRGRP | stat.S_IRO
 
 def cc(*cmd: List[str], src: str, build: str):
   Path(build).mkdir(parents=True, exist_ok=True)
-  c_file_paths = [x for x in Path(src).rglob("*.c")]
+  c_file_paths = [x for x in Path(src).rglob(f"*.c")]
+  cpp_file_paths = [x for x in Path(src).rglob(f"*.cpp")]
+
   for f in c_file_paths:
     c_file = str(f)
     o_file = Path(build) / f.with_suffix(".o").name
     exec(*cmd, "-c", c_file, "-o", o_file)
+  for f in cpp_file_paths:
+    c_file = str(f)
+    o_file = Path(build) / f.with_suffix(".o").name
+    exec(*cmd, "-std=c++11", "-c", c_file, "-o", o_file)
 
-def build_repo(repo: str):
+def build_repo(repo: str, include="include"):
   name = Path(repo).stem
   if not (Path(f"./deps/macos/include/{name}").is_dir() and Path(f"./deps/macos/lib/lib{name}.a").is_file()):
     if not Path(f"./deps/macos/src/{name}").is_dir():
       exec("git", "clone", "--no-checkout", "--depth=1", "--filter=tree:0", repo, cwd="./deps/macos/src")
-      exec("git", "sparse-checkout", "set", "--no-cone", "/include", "/src", cwd=f"./deps/macos/src/{name}")
+      exec("git", "sparse-checkout", "set", "--no-cone", f"/{include}", "/src", cwd=f"./deps/macos/src/{name}")
       exec("git", "checkout", cwd=f"./deps/macos/src/{name}")
-      cc("clang", "-fPIC", "-std=c17", "-ffast-math", "-O2", f"-I./deps/macos/src/{name}/include", src=f"./deps/macos/src/{name}/src", build=f"./deps/macos/src/{name}/build")
+      cc("clang", "-fPIC", "-ffast-math", "-O2", f"-I./deps/macos/src/{name}/{include}", src=f"./deps/macos/src/{name}/src", build=f"./deps/macos/src/{name}/build")
       o_files = [str(x.relative_to(f"./deps/macos/src/{name}/build")) for x in Path(f"./deps/macos/src/{name}/build").rglob("*.o")]
       exec("ar", "rcs", f"lib{name}.a", *o_files, cwd=f"./deps/macos/src/{name}/build")
     if not Path(f"./deps/macos/include/{name}").is_dir():
-      copy_dir_contents(f"./deps/macos/src/{name}/include", "./deps/macos/include")
+      copy_dir_contents(f"./deps/macos/src/{name}/{include}", "./deps/macos/include")
     if not Path(f"./deps/macos/lib/lib{name}.a").is_file():
       shutil.copyfile(f"./deps/macos/src/{name}/build/lib{name}.a", f"./deps/macos/lib/lib{name}.a")
 
@@ -105,6 +111,9 @@ if build:
   # Box2D
   build_repo("https://github.com/erincatto/box2d.git")
 
+  # polypartition
+  build_repo("https://github.com/ivanfratric/polypartition.git", include="src")
+
   cc("clang", "-g", "-O0", "-c", "-I./deps/macos/include", src="./src", build="./build/macos")
   o_files = [str(x) for x in Path("./build/macos").rglob("*.o")]
   exec(
@@ -115,8 +124,9 @@ if build:
     "src/arch/macos/main.swift",
     *o_files,
     "./deps/macos/lib/libMoltenVK.dylib",
-    # "-lChipmunk2D",
     "-lbox2d",
+    "-lpolypartition",
+    "-lc++",
     "-o", "./build/macos/game",
     "-framework", "AppKit",
     "-framework", "Metal",
