@@ -8,9 +8,10 @@ func initWrapper(_ appPath: String, _ vkInst: VkInstance, _ vkSurface: VkSurface
 
 func handleKey(_ event: NSEvent) {
   if event.isARepeat { return }
+  let keyDown = event.type == .keyDown
   // print("macOS code:", event.keyCode)
   // print("ascii:", event.characters?.first?.asciiValue ?? "")
-  let keyDown = event.type == .keyDown
+  // print("keyDown:", keyDown)
   switch event.keyCode {
     case 29: set_key_state(Int(KEY_0), keyDown)
     case 18: set_key_state(Int(KEY_1), keyDown)
