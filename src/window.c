@@ -2,12 +2,18 @@
 #include <stdio.h>
 
 #include "window.h"
+#include "entity.h"
 
 Window window = {};
 
 void init_window(uint32_t width, uint32_t height) {
+  window_resized(width, height);
+}
+
+void window_resized(uint32_t width, uint32_t height) {
   window.width = width;
   window.height = height;
+  update_pixart_unit();
 }
 
 void set_key_state(size_t key, bool state) {

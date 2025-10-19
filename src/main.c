@@ -90,6 +90,25 @@ static void box_drop() {
   update_entities();
 }
 
+static void box_spawn() {
+  static bool m = false;
+  static float drag_x;
+  static float drag_y;
+  if (!m && window.mouse_right) {
+    drag_x = window.mouse_x;
+    drag_y = window.mouse_y;
+    m = true;
+    float r = rand() / (float) RAND_MAX;
+    float g = rand() / (float) RAND_MAX;
+    float b = rand() / (float) RAND_MAX;
+    float x = window_to_entity(window.mouse_x);
+    float y = window_to_entity(window.mouse_y);
+    Entity* entity = create_entity((Entity){ .w = 10, .h = 10, .x = x, .y = y, .color = {r,g,b} });
+    attach_body(entity, true);
+  }
+  m = window.mouse_right;
+}
+
 typedef struct EntityUpdateData {
   Entity* bloop;
   size_t ms;
@@ -164,19 +183,20 @@ static void box_screensaver(size_t ms) {
 }
 
 static void draw_polygons() {
-  static Polygon polygons[60000];
-  static size_t polygon_index;
-  static size_t redo_polygon_index;
   static bool mouse_down = false;
   static bool esc_down = false;
   static bool undo = false;
   static bool redo = false;
   static bool closing = false;
+
   const size_t MAX_POINTS = 100;
   static float points[MAX_POINTS][2];
   static float current_point[2];
   static ptrdiff_t point_index = -1;
   static ptrdiff_t redo_point_index = -1;
+  static Entity* polygons[6000];
+  static ptrdiff_t polygon_index = -1;
+  static ptrdiff_t redo_polygon_index = -1;
 
   float x = window_to_entity(window.mouse_x);
   float y = window_to_entity(window.mouse_y);
@@ -192,14 +212,14 @@ static void draw_polygons() {
   if (!undo && (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && !window.keys[KEY_LSHIFT] && window.keys[KEY_Z]) {
     if (point_index >= 0) {
       point_index--;
-    } else {
-      polygon_index = polygon_index < 1 ? 0 : polygon_index - 1;
+    } else if (polygon_index >= 0) {
+      disable_entity(polygons[polygon_index--]);
     }
     window.keys[KEY_Z] = false; // TODO: fix the macOS issue where keyUp is not reported while Meta is held
   }
   if (!redo && (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && window.keys[KEY_LSHIFT] && window.keys[KEY_Z]) {
     if (polygon_index < redo_polygon_index) {
-      polygon_index++;
+      enable_entity(polygons[++polygon_index]);
     } else if (point_index < redo_point_index) {
       point_index++;
     } 
@@ -215,7 +235,13 @@ static void draw_polygons() {
       point_index++;
       points[point_index][0] = points[0][0];
       points[point_index][1] = points[0][1];
-      polygons[polygon_index++] = create_polygon(points, point_index);
+      Polygon poly = create_polygon(points, point_index);
+      if (validate_polygon(&poly)) {
+        polygons[++polygon_index] = create_entity((Entity){ .poly = poly });
+        attach_body(polygons[polygon_index], false);
+      } else {
+        free_polygon(&poly);
+      }
       point_index = -1;
       closing = false;
     } else {
@@ -263,9 +289,6 @@ static void draw_polygons() {
     current_point[1] = y;
   }
 
-  for (size_t i=0; i < polygon_index; i++) {
-    draw_polygon(&polygons[i]);
-  }
   if (point_index >= 0) {
     for (ptrdiff_t i=0; i < point_index; i++) {
       float x1 = entity_to_screen(points[i][0]);
@@ -312,11 +335,13 @@ bool tick(size_t ms) {
     return false;
   }
 
-  // box_screensaver(ms);
+  box_spawn();
+
+  update_entities();
 
   begin_render();
-  draw_polygons();
   render_entities();
+  draw_polygons();
   end_render();
 
   if (window.keys[KEY_LMETA] && (window.keys[KEY_Q] || window.keys[KEY_W])) {

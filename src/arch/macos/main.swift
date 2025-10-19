@@ -177,6 +177,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
   var vkInst: VkInstance!
   var vkSurface: VkSurfaceKHR!
   var lastFrameTime: Double?
+  var didInit = false
+
+  func windowDidResize(_ notification: Notification) {
+    if let window = notification.object as? NSWindow {
+      if let viewBounds = window.contentView?.bounds {
+        let scaleFactor = window.backingScaleFactor
+        let width = UInt32(viewBounds.width * scaleFactor)
+        let height = UInt32(viewBounds.height * scaleFactor)
+        window_resized(width, height)
+      }
+    }
+  }
 
   func applicationDidFinishLaunching(_ aNotification: Notification) {
     let appPath = "\(Bundle.main.bundlePath)/Contents/MacOS/"
@@ -251,6 +263,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         NSApp.terminate(self)
         return
       }
+      didInit = true
     } else {
       print("Vulkan surface creation failed")
     }
@@ -266,6 +279,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
   }
 
   @objc func gameLoopStep() {
+    if !didInit { return }
+
     let currentTime = CFAbsoluteTimeGetCurrent()
     let deltaTime = currentTime - (lastFrameTime ?? currentTime) // Time since last frame (seconds)
     lastFrameTime = currentTime

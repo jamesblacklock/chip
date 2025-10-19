@@ -62,6 +62,10 @@ def copy_dir_contents(src, dest):
 clean = arg("clean")
 run = arg("run")
 build = arg("build")
+pull = arg("pull")
+
+if pull:
+  exec("git", "pull")
 
 if clean:
   shutil.rmtree("./deps", ignore_errors=True)

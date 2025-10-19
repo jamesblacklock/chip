@@ -61,6 +61,13 @@ Polygon create_polygon(float points[][2], size_t count) {
   return p;
 }
 
+bool validate_polygon(Polygon* poly) {
+  if (poly->triangles == NULL) {
+    poly->triangles = partition_triangles(poly, &poly->triangle_count);
+  }
+  return poly->triangles != NULL;
+}
+
 void free_polygon(Polygon* poly) {
   free(poly->points);
   free_polygons(poly->triangles, poly->triangle_count);
@@ -77,7 +84,11 @@ void free_polygons(Polygon* polys, size_t count) {
 }
 
 Polygon* partition_convex(Polygon* poly, size_t* output_count) {
-  return partition(poly, output_count, false, [] (TPPLPartition* part, TPPLPoly* poly, std::list<TPPLPoly>* res) { part->ConvexPartition_OPT(poly, res); });
+  Polygon* result = partition(poly, output_count, false, [] (TPPLPartition* part, TPPLPoly* poly, std::list<TPPLPoly>* res) { part->ConvexPartition_OPT(poly, res); });
+  if (result == NULL) {
+    result = partition(poly, output_count, false, [] (TPPLPartition* part, TPPLPoly* poly, std::list<TPPLPoly>* res) { part->ConvexPartition_HM(poly, res); });
+  }
+  return result;
 }
 
 Polygon* partition_triangles(Polygon* poly, size_t* output_count) {
@@ -85,8 +96,8 @@ Polygon* partition_triangles(Polygon* poly, size_t* output_count) {
 }
 
 void draw_polygon(Polygon* poly) {
-  if (poly->triangles == NULL) {
-    poly->triangles = partition_triangles(poly, &poly->triangle_count);
+  if (!validate_polygon(poly)) {
+    return;
   }
 
   for (size_t i=0; i < poly->triangle_count; i++) {

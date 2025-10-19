@@ -73,6 +73,7 @@ void set_key_state(size_t key, bool state);
 void set_mouse_state(float x, float y, bool l, bool r);
 void init_window(uint32_t width, uint32_t height);
 void window_closed();
+void window_resized(uint32_t width, uint32_t height);
 
 typedef struct Window {
   bool keys[500];

@@ -27,5 +27,6 @@ EXTERN_C Polygon create_polygon(float points[][2], size_t count);
 EXTERN_C void free_polygons(Polygon* polys, size_t count);
 EXTERN_C void free_polygon(Polygon* poly);
 EXTERN_C void draw_polygon(Polygon* poly);
+EXTERN_C bool validate_polygon(Polygon* poly);
 
 #endif

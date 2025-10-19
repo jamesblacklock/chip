@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <box2d/box2d.h>
 
+#include "polygon.h"
+
 typedef struct EntityGlobals {
   float pixart_unit;
 } EntityGlobals;
@@ -20,12 +22,13 @@ typedef struct Entity {
   float y;
   float w;
   float h;
+  Polygon poly;
   struct { float x; float y; float a; } velocity;
   float angle;
   Color color;
-  bool live;
   size_t index;
   b2BodyId body;
+  bool enabled;
 } Entity;
 
 #ifdef __cplusplus
@@ -38,10 +41,13 @@ extern EntityGlobals entity_globals;
 extern b2WorldId world;
 
 EXTERN_C Entity* create_entity(Entity new_entity);
+EXTERN_C void enable_entity(Entity* entity);
+EXTERN_C void disable_entity(Entity* entity);
 EXTERN_C void destroy_entity(Entity* entity);
 EXTERN_C void attach_body(Entity* entity, bool dynamic);
 
 EXTERN_C void init_entities();
+EXTERN_C void update_pixart_unit();
 EXTERN_C float window_to_entity(float x);
 EXTERN_C float entity_to_screen(float x);
 EXTERN_C void visit_entities(void (*visitor)(Entity*, void*), void* data);

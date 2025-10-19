@@ -37,7 +37,7 @@
 typedef struct FREELIST_ITEM  {
   FREELIST_DATATYPE item;
   size_t index;
-  bool live;
+  bool free;
 } FREELIST_ITEM;
 
 
@@ -54,6 +54,7 @@ static void FREELIST_INIT(size_t initial_heap) {
   for (size_t i=0; i < FREELIST_SIZE; i++) {
     FREELIST[i] = i;
     FREELIST_HEAP[i].index = i;
+    FREELIST_HEAP[i].free = true;
   }
   FREELIST_INDEX = FREELIST_SIZE - 1;
   FREELIST_INITIALIZED = true;
@@ -83,12 +84,12 @@ static FREELIST_DATATYPE* FREELIST_ALLOC() {
     return FREELIST_ALLOC();
   }
   size_t i = FREELIST[FREELIST_INDEX--];
-  FREELIST_HEAP[i].live = true;
+  FREELIST_HEAP[i].free = false;
   return &FREELIST_HEAP[i].item;
 }
 
 static void FREELIST_FREE(FREELIST_DATATYPE* item) {
   FREELIST_ITEM* p = (FREELIST_ITEM*) item;
-  p->live = false;
+  p->free = true;
   FREELIST[FREELIST_INDEX++] = p->index;
 }
