@@ -103,19 +103,16 @@ void draw_polygon(Polygon* poly) {
   }
 
   for (size_t i=0; i < poly->triangle_count; i++) {
-    float p1[2], p2[2], p3[2];
-    screen_to_world(entity_to_screen(poly->triangles[i].points[0].x), entity_to_screen(poly->triangles[i].points[0].y), p1);
-    screen_to_world(entity_to_screen(poly->triangles[i].points[1].x), entity_to_screen(poly->triangles[i].points[1].y), p2);
-    screen_to_world(entity_to_screen(poly->triangles[i].points[2].x), entity_to_screen(poly->triangles[i].points[2].y), p3);
     draw_triangle((TriangleData){
-      .x1 = p1[0],
-      .y1 = p1[1],
-      .x2 = p2[0],
-      .y2 = p2[1],
-      .x3 = p3[0],
-      .y3 = p3[1],
+      .x1 = entity_to_screen(poly->triangles[i].points[0].x),
+      .y1 = entity_to_screen(poly->triangles[i].points[0].y),
+      .x2 = entity_to_screen(poly->triangles[i].points[1].x),
+      .y2 = entity_to_screen(poly->triangles[i].points[1].y),
+      .x3 = entity_to_screen(poly->triangles[i].points[2].x),
+      .y3 = entity_to_screen(poly->triangles[i].points[2].y),
       .g = 1,
       .b = 1,
+      .reuse_attrs = i > 0,
     });
   }
 }

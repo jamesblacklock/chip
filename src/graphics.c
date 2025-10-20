@@ -16,19 +16,20 @@ const size_t MAX_TRIANGLES = 20000;
 
 typedef struct VkTrianglePoint {
   vec2 pos;
-  uint32_t triangle_id;
+  uint32_t attr_id;
 } VkTrianglePoint;
 
 typedef VkTrianglePoint VkTriangle[3];
 
-typedef struct VkTriangleAttr {
+typedef struct VkAttr {
   mat4 transform;
   vec3 color;
-} VkTriangleAttr;
+} VkAttr;
 
 typedef struct UBO {
   mat4 view;
   mat4 proj;
+  vec2 dims;
 } UBO;
 
 typedef struct RenderContext {
@@ -69,7 +70,7 @@ static VkBuffer g_vbuf_stg;
 static VkDeviceMemory g_vbuf_stg_mem;
 static void* g_vbuf_stg_map;
 
-static VkDeviceSize g_sbuf_sz = sizeof(VkTriangleAttr) * MAX_TRIANGLES;
+static VkDeviceSize g_sbuf_sz = sizeof(VkAttr) * MAX_TRIANGLES;
 static VkBuffer g_sbuf;
 static VkDeviceMemory g_sbuf_mem;
 static VkBuffer g_sbuf_stg;
@@ -102,6 +103,11 @@ static void cleanup_swapchain() {
     vkDestroyImageView(g_device, g_swap_views[i], NULL);
   }
   vkDestroySwapchainKHR(g_device, g_swap_chain, NULL);
+}
+
+void surface_dimensions_changed(uint32_t fb_width, uint32_t fb_height) {
+  g_ubo.dims[0] = g_fb_width = fb_width;
+  g_ubo.dims[1] = g_fb_height = fb_height;
 }
 
 void cleanup_vulkan() {
@@ -286,8 +292,7 @@ static bool create_swapchain() {
   }
 
   glm_mat4_identity(g_ubo.view);
-  float aspect = g_swap_extent.width / (float) g_swap_extent.height;
-  glm_ortho(-aspect, aspect, -1, 1, -1, 1, g_ubo.proj);
+  glm_mat4_identity(g_ubo.proj);
 
   printf("Vulkan swapchain setup complete\n");
 
@@ -499,7 +504,7 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
       .binding = 0,
       .location = 1,
       .format = VK_FORMAT_R32_UINT,
-      .offset = offsetof(VkTrianglePoint, triangle_id),
+      .offset = offsetof(VkTrianglePoint, attr_id),
     },
   };
 
@@ -814,29 +819,6 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
   return true;
 }
 
-void screen_to_world(float x, float y, vec2 dst) {
-  mat4 mat;
-  glm_mat4_mul(g_ubo.proj, g_ubo.view, mat);
-  glm_mat4_inv(mat, mat);
-  vec4 vec = {x/(g_swap_extent.width/2), y/(g_swap_extent.height/2), 1, 1};
-  glm_mat4_mulv(mat, vec, vec);
-  vec[3] = 1 / vec[3];
-  vec[0] *= vec[3];
-  vec[1] *= vec[3];
-  dst[0] = vec[0];
-  dst[1] = vec[1];
-}
-float screen_x_to_world(float x) {
-  vec2 res;
-  screen_to_world(x, 0, res);
-  return res[0];
-}
-float screen_y_to_world(float y) {
-  vec2 res;
-  screen_to_world(0, y, res);
-  return res[1];
-}
-
 void begin_render() {
   VkFence fence = g_fence[g_frame_index];
   VkSemaphore sig_ready = g_sig_ready[g_frame_index];
@@ -882,6 +864,7 @@ void draw_quad(QuadData data) {
     .x2 = x2, .y2 = y2,
     .x3 = x2, .y3 = y1,
     .r = data.r, .g = data.g, .b = data.b,
+    .reuse_attrs = true,
   };
 }
 static float dist(float x, float y) {
@@ -924,28 +907,32 @@ void end_render() {
   memcpy(g_ubuf_map[g_frame_index], &g_ubo, sizeof(UBO));
 
   VkTriangle* vbuf_stg_map = g_vbuf_stg_map;
-  VkTriangleAttr* sbuf_stg_map = g_sbuf_stg_map;
+  VkAttr* sbuf_stg_map = g_sbuf_stg_map;
   TriangleData* triangles = g_triangle_data[g_frame_index];
-  for (size_t i=0; i < ctx->triangle_index; i++) {
+  size_t attr_index = 0;
+  for (size_t i=0; i < ctx->triangle_index; i++, attr_index++) {
     TriangleData* data = &triangles[i];
+    if (data->reuse_attrs) {
+      attr_index--;
+    } else {
+      VkAttr attr_data = { .color = {data->r, data->g, data->b} };
+      glm_mat4_identity(attr_data.transform);
+      vec3 point = {data->ox, data->oy, 0};
+      glm_translate(attr_data.transform, point);
+      glm_rotate(attr_data.transform, data->angle, (vec3){0,0,1});
+      memcpy(sbuf_stg_map, &attr_data, sizeof(VkAttr));
+      sbuf_stg_map++;
+    }
     VkTriangle vector_data = {
-      {{data->x1, data->y1}, .triangle_id = i},
-      {{data->x2, data->y2}, .triangle_id = i},
-      {{data->x3, data->y3}, .triangle_id = i},
+      {{data->x1, data->y1}, .attr_id = attr_index},
+      {{data->x2, data->y2}, .attr_id = attr_index},
+      {{data->x3, data->y3}, .attr_id = attr_index},
     };
     memcpy(vbuf_stg_map, &vector_data, sizeof(VkTriangle));
     vbuf_stg_map++;
-
-    VkTriangleAttr attr_data = { .color = {data->r, data->g, data->b} };
-    glm_mat4_identity(attr_data.transform);
-    vec3 point = {data->ox, data->oy, 0};
-    glm_translate(attr_data.transform, point);
-    glm_rotate(attr_data.transform, data->angle, (vec3){0,0,1});
-    memcpy(sbuf_stg_map, &attr_data, sizeof(VkTriangleAttr));
-    sbuf_stg_map++;
   }
   copy_buffer(g_vbuf_stg, g_vbuf, sizeof(VkTriangle) * ctx->triangle_index);
-  copy_buffer(g_sbuf_stg, g_sbuf, sizeof(VkTriangleAttr) * ctx->triangle_index);
+  copy_buffer(g_sbuf_stg, g_sbuf, sizeof(VkAttr) * attr_index);
 
   VkCommandBuffer command_buffer = g_command_buffer[g_frame_index];
   vkResetCommandBuffer(command_buffer, 0);

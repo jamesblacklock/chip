@@ -350,13 +350,11 @@ static bool map_editor(size_t ms) {
   float x = window_to_entity(window.mouse_x);
   float y = window_to_entity(window.mouse_y);
 
-  float grid_snap = window.keys[KEY_LALT] ? 5 : 10;
+  float grid_snap = window.keys[KEY_LCTRL] ? 10 : window.keys[KEY_LALT] ? 0.01 : 2;
   float angle_snap = window.keys[KEY_LALT] ? M_PI/16 : M_PI/4;
 
-  if (window.keys[KEY_LCTRL]) {
-    x = round(x / grid_snap) * grid_snap;
-    y = round(y / grid_snap) * grid_snap;
-  }
+  x = round(x / grid_snap) * grid_snap;
+  y = round(y / grid_snap) * grid_snap;
 
   if (!undo && (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && !window.keys[KEY_LSHIFT] && window.keys[KEY_Z]) {
     if (point_index >= 0) {
@@ -453,35 +451,21 @@ static bool map_editor(size_t ms) {
   render_entities();
   if (point_index >= 0) {
     for (ptrdiff_t i=0; i < point_index; i++) {
-      float x1 = entity_to_screen(points[i][0]);
-      float x2 = entity_to_screen(points[i+1][0]);
-      float y1 = entity_to_screen(points[i][1]);
-      float y2 = entity_to_screen(points[i+1][1]);
-      float p1[2], p2[2];
-      screen_to_world(x1, y1, p1);
-      screen_to_world(x2, y2, p2);
       draw_line((LineData){
-        .x1 = p1[0],
-        .y1 = p1[1],
-        .x2 = p2[0],
-        .y2 = p2[1],
-        .w = screen_x_to_world(entity_to_screen(1)),
+        .x1 = entity_to_screen(points[i][0]),
+        .y1 = entity_to_screen(points[i][1]),
+        .x2 = entity_to_screen(points[i+1][0]),
+        .y2 = entity_to_screen(points[i+1][1]),
+        .w = entity_to_screen(1),
         .r = 1,
       });
     }
-    float x1 = entity_to_screen(points[point_index][0]);
-    float x2 = entity_to_screen(current_point[0]);
-    float y1 = entity_to_screen(points[point_index][1]);
-    float y2 = entity_to_screen(current_point[1]);
-    float p1[2], p2[2];
-    screen_to_world(x1, y1, p1);
-    screen_to_world(x2, y2, p2);
     draw_line((LineData){
-      .x1 = p1[0],
-      .y1 = p1[1],
-      .x2 = p2[0],
-      .y2 = p2[1],
-      .w = screen_x_to_world(entity_to_screen(1)),
+      .x1 = entity_to_screen(points[point_index][0]),
+      .y1 = entity_to_screen(points[point_index][1]),
+      .x2 = entity_to_screen(current_point[0]),
+      .y2 = entity_to_screen(current_point[1]),
+      .w = entity_to_screen(1),
       .r = 1,
     });
   }

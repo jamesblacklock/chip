@@ -3,6 +3,7 @@
 
 #include "window.h"
 #include "entity.h"
+#include "graphics.h"
 
 Window window = {};
 
@@ -14,6 +15,7 @@ void window_resized(uint32_t width, uint32_t height) {
   window.width = width;
   window.height = height;
   update_pixart_unit();
+  surface_dimensions_changed(width, height);
 }
 
 void set_key_state(size_t key, bool state) {

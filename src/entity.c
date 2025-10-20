@@ -72,6 +72,10 @@ void attach_body(Entity* entity, bool dynamic) {
       shapeDef.material.friction = 1;
       shapeDef.material.restitution = 0;
       b2Hull hull = b2ComputeHull((b2Vec2*)convexes[i].points, convexes[i].count);
+      if (!b2ValidateHull(&hull)) {
+        printf("failed to validate hull\n");
+        continue;
+      }
       b2Polygon box = b2MakePolygon(&hull, 1);
       b2CreatePolygonShape(entity->body, &shapeDef, &box);
     }
@@ -93,15 +97,11 @@ static void render_entity(Entity* entity, void* _data) {
     draw_polygon(&entity->poly);
     return;
   }
-  float pos[2];
-  float sz[2];
-  screen_to_world(entity_to_screen(entity->x), entity_to_screen(entity->y), pos);
-  screen_to_world(entity_to_screen(entity->w), entity_to_screen(entity->h), sz);
   draw_quad((QuadData){
-    .x = pos[0],
-    .y = pos[1],
-    .w = sz[0],
-    .h = sz[1],
+    .x = entity->x,
+    .y = entity->y,
+    .w = entity->w,
+    .h = entity->h,
     .angle = entity->angle,
     .r = entity->color.r,
     .g = entity->color.g,
