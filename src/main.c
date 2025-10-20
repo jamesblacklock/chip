@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <math.h>
+#include <time.h>
 #ifdef WIN32
 #include <io.h>
 #define F_OK 0
@@ -50,6 +51,8 @@ void process_argv(int argc, char** argv) {
 }
 
 bool init(int argc, char** argv, const char* app_path0, VkInstance instance, VkSurfaceKHR surface, uint32_t width, uint32_t height) {
+  srand(time(NULL));
+
   size_t len = strlen(app_path0);
   app_path = malloc(len + 1);
   strncpy(app_path, app_path0, len);
@@ -102,7 +105,7 @@ static void box_drop() {
   static float drag_x;
   static float drag_y;
   static Entity* bloop = NULL;
-  if (!m && window.mouse_left) {
+  if (!m && window.mouse_buttons[MOUSE_LEFT]) {
     drag_x = window.mouse_x;
     drag_y = window.mouse_y;
     m = true;
@@ -113,7 +116,7 @@ static void box_drop() {
     float y = window_to_entity(drag_y);
     bloop = create_entity((Entity){ .w = 1, .h = 1, .x = x, .y = y, .color = {r,g,b} });
   }
-  if (m && window.mouse_left && bloop) {
+  if (m && window.mouse_buttons[MOUSE_LEFT] && bloop) {
     float x1 = window_to_entity(fmin(window.mouse_x, drag_x));
     float x2 = window_to_entity(fmax(window.mouse_x, drag_x));
     float y1 = window_to_entity(fmin(window.mouse_y, drag_y));
@@ -123,11 +126,11 @@ static void box_drop() {
     bloop->h = y2 - y1;
     bloop->y = y1 + bloop->h/2;
   }
-  if (!window.mouse_left && bloop) {
+  if (!window.mouse_buttons[MOUSE_LEFT] && bloop) {
     attach_body(bloop, window.keys[KEY_LSHIFT]);
     bloop = NULL;
   }
-  m = window.mouse_left;
+  m = window.mouse_buttons[MOUSE_LEFT];
 
   b2World_Step(world, 1.0/60.0, 10);
   update_entities();
@@ -137,7 +140,7 @@ static void box_spawn() {
   static bool m = false;
   static float drag_x;
   static float drag_y;
-  if (!m && window.mouse_right) {
+  if (!m && window.mouse_buttons[MOUSE_RIGHT]) {
     drag_x = window.mouse_x;
     drag_y = window.mouse_y;
     m = true;
@@ -149,7 +152,7 @@ static void box_spawn() {
     Entity* entity = create_entity((Entity){ .w = 10, .h = 10, .x = x, .y = y, .color = {r,g,b} });
     attach_body(entity, true);
   }
-  m = window.mouse_right;
+  m = window.mouse_buttons[MOUSE_RIGHT];
 }
 
 typedef struct EntityUpdateData {
@@ -196,7 +199,7 @@ static void box_screensaver(size_t ms) {
   static float drag_x;
   static float drag_y;
   static Entity* bloop = NULL;
-  if (!m && window.mouse_left) {
+  if (!m && window.mouse_buttons[MOUSE_LEFT]) {
     drag_x = window.mouse_x;
     drag_y = window.mouse_y;
     m = true;
@@ -207,7 +210,7 @@ static void box_screensaver(size_t ms) {
     float y = window_to_entity(drag_y);
     bloop = create_entity((Entity){ .w = 1, .h = 1, .x = x, .y = y, .color = {r,g,b} });
   }
-  if (m && window.mouse_left && bloop) {
+  if (m && window.mouse_buttons[MOUSE_LEFT] && bloop) {
     float x1 = window_to_entity(fmin(window.mouse_x, drag_x));
     float x2 = window_to_entity(fmax(window.mouse_x, drag_x));
     float y1 = window_to_entity(fmin(window.mouse_y, drag_y));
@@ -217,10 +220,10 @@ static void box_screensaver(size_t ms) {
     bloop->h = y2 - y1;
     bloop->y = y1 + bloop->h/2;
   }
-  if (!window.mouse_left && bloop) {
+  if (!window.mouse_buttons[MOUSE_LEFT] && bloop) {
     bloop = NULL;
   }
-  m = window.mouse_left;
+  m = window.mouse_buttons[MOUSE_LEFT];
   
   visit_entities(box_screensaver_update_entity, &(EntityUpdateData){ .bloop = bloop, .ms = ms });
 }
@@ -245,7 +248,7 @@ SerializableObject* read_object(FILE* fp) {
       return (SerializableObject*) polygon;
     }
     case OBJECT_TYPE_EOF: {
-      printf("read end-of-file marker\n");
+      printf("read end-of-file marker\n\n");
       return NULL;
     }
     default: {
@@ -304,12 +307,14 @@ static bool map_editor_load() {
       continue;
     }
     if (validate_polygon(poly)) {
-      MapEditor.polygons[++MapEditor.polygon_index] = create_entity((Entity){ .poly = *poly });
+      Color color = { rand() / (float) RAND_MAX, rand() / (float) RAND_MAX, rand() / (float) RAND_MAX };
+      MapEditor.polygons[++MapEditor.polygon_index] = create_entity((Entity){ .poly = *poly, .color = color });
       attach_body(MapEditor.polygons[MapEditor.polygon_index], false);
     }
     free(poly);
     poly = (Polygon*) read_object(fp);
   }
+  MapEditor.redo_polygon_index = MapEditor.polygon_index;
   fclose(fp);
   return true;
 }
@@ -327,9 +332,33 @@ static bool init_map_editor() {
   return true;
 }
 
+static bool mouse_pressed(uint32_t button) {
+  return !window.last_frame_mouse_buttons[button] && window.mouse_buttons[button];
+}
+
+static bool key_pressed(uint32_t key) {
+  return !window.last_frame_keys[key] && window.keys[key];
+}
+
+static bool drag_delta(float* x, float* y, uint32_t button) {
+  static float _x[MOUSE_BUTTON_COUNT], _y[MOUSE_BUTTON_COUNT];
+  if (mouse_pressed(button)) {
+    _x[button] = window.mouse_x;
+    _y[button] = window.mouse_y;
+  }
+  if (window.mouse_buttons[button]) {
+    *x = window.mouse_x - _x[button];
+    *y = window.mouse_y - _y[button];
+    _x[button] = window.mouse_x;
+    _y[button] = window.mouse_y;
+    return true;
+  } else {
+    *x = *y = 0;
+    return false;
+  }
+}
+
 static bool map_editor(size_t ms) {
-  static bool mouse_down;
-  static bool esc_down;
   static bool undo;
   static bool redo;
   static bool save;
@@ -341,16 +370,24 @@ static bool map_editor(size_t ms) {
   }
   init = true;
 
+  static float view_x, view_y, view_z;
+  float drag_view_x, drag_view_y;
+  drag_delta(&drag_view_x, &drag_view_y, MOUSE_MIDDLE);
+  view_x += screen_to_z0(drag_view_x);
+  view_y += screen_to_z0(drag_view_y);
+  view_z = window.scroll_y < 0 ? (-window.scroll_y*window.scroll_y)/10 : sqrt(window.scroll_y * 2000);
+  set_view_coords(view_x, view_y, view_z);
+
   const size_t MAX_POINTS = 100;
   static float points[MAX_POINTS][2];
   static float current_point[2];
   static ptrdiff_t point_index = -1;
   static ptrdiff_t redo_point_index = -1;
 
-  float x = window_to_entity(window.mouse_x);
-  float y = window_to_entity(window.mouse_y);
+  float x = window_to_entity(screen_to_z0(window.mouse_x));
+  float y = window_to_entity(screen_to_z0(window.mouse_y));
 
-  float grid_snap = window.keys[KEY_LCTRL] ? 10 : window.keys[KEY_LALT] ? 0.01 : 2;
+  float grid_snap = screen_to_z0(window.keys[KEY_LCTRL] ? 10 : window.keys[KEY_LALT] ? 0.01 : 2);
   float angle_snap = window.keys[KEY_LALT] ? M_PI/16 : M_PI/4;
 
   x = round(x / grid_snap) * grid_snap;
@@ -377,18 +414,19 @@ static bool map_editor(size_t ms) {
     window.keys[KEY_S] = false; // TODO: fix the macOS issue where keyUp is not reported while Meta is held
   }
 
-  if (!esc_down && window.keys[KEY_ESC]) {
+  if (key_pressed(KEY_ESC)) {
     point_index = -1;
   }
 
-  if (!mouse_down && window.mouse_left) {
+  if (mouse_pressed(MOUSE_LEFT)) {
     if (closing) {
       point_index++;
       points[point_index][0] = points[0][0];
       points[point_index][1] = points[0][1];
       Polygon poly = create_polygon(points, point_index);
       if (validate_polygon(&poly)) {
-        MapEditor.polygons[++MapEditor.polygon_index] = create_entity((Entity){ .poly = poly });
+        Color color = { rand() / (float) RAND_MAX, rand() / (float) RAND_MAX, rand() / (float) RAND_MAX };
+        MapEditor.polygons[++MapEditor.polygon_index] = create_entity((Entity){ .poly = poly, .color = color });
         attach_body(MapEditor.polygons[MapEditor.polygon_index], false);
       } else {
         free_polygon(&poly);
@@ -440,8 +478,6 @@ static bool map_editor(size_t ms) {
     current_point[1] = y;
   }
 
-  mouse_down = window.mouse_left;
-  esc_down = window.keys[KEY_ESC];
   undo = (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && !window.keys[KEY_LSHIFT] && window.keys[KEY_Z];
   redo = (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && window.keys[KEY_LSHIFT] && window.keys[KEY_Z];
   save = (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && window.keys[KEY_S];
@@ -456,7 +492,7 @@ static bool map_editor(size_t ms) {
         .y1 = entity_to_screen(points[i][1]),
         .x2 = entity_to_screen(points[i+1][0]),
         .y2 = entity_to_screen(points[i+1][1]),
-        .w = entity_to_screen(1),
+        .w = screen_to_z0(entity_to_screen(1)),
         .r = 1,
       });
     }
@@ -465,7 +501,7 @@ static bool map_editor(size_t ms) {
       .y1 = entity_to_screen(points[point_index][1]),
       .x2 = entity_to_screen(current_point[0]),
       .y2 = entity_to_screen(current_point[1]),
-      .w = entity_to_screen(1),
+      .w = screen_to_z0(entity_to_screen(1)),
       .r = 1,
     });
   }
@@ -478,5 +514,8 @@ bool tick(size_t ms) {
   if (window.keys[KEY_LMETA] && (window.keys[KEY_Q] || window.keys[KEY_W])) {
     window.closed = true;
   }
-  return tick_routine(ms);
+  bool res = tick_routine(ms);
+  memcpy(window.last_frame_mouse_buttons, window.mouse_buttons, sizeof(window.mouse_buttons));
+  memcpy(window.last_frame_keys, window.keys, sizeof(window.keys));
+  return res;
 }

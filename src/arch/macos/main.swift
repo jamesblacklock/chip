@@ -82,8 +82,11 @@ class GameView: NSView {
   var keyRalt = false
   var mouseX: Float = 0.0;
   var mouseY: Float = 0.0;
+  var scrollX: Float = 0.0;
+  var scrollY: Float = 0.0;
   var mouseLDown = false;
   var mouseRDown = false;
+  var mouseMDown = false;
   var backingScaleFactor: CGFloat = 0;
 
   override var acceptsFirstResponder: Bool { true } // Allow view to receive key events
@@ -105,33 +108,50 @@ class GameView: NSView {
     self.layer!.backgroundColor = CGColor(gray: 0.0, alpha: 1.0)
   }
 
+  override func scrollWheel(with event: NSEvent) {
+    scrollX += Float(event.hasPreciseScrollingDeltas ? event.scrollingDeltaX : -abs(event.scrollingDeltaX) / event.scrollingDeltaX * 10)
+    scrollY += Float(event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : -abs(event.scrollingDeltaY) / event.scrollingDeltaY * 10)
+    set_scroll_state(scrollX, scrollY)
+  }
+
   override func mouseDown(with event: NSEvent) {
     mouseLDown = true
-    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown);
+    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown, mouseMDown);
   }
   override func mouseUp(with event: NSEvent) {
     mouseLDown = false
-    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown);
+    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown, mouseMDown);
   }
   override func rightMouseDown(with event: NSEvent) {
     mouseRDown = true
-    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown);
+    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown, mouseMDown);
   }
   override func rightMouseUp(with event: NSEvent) {
     mouseRDown = false
-    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown);
+    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown, mouseMDown);
+  }
+  override func otherMouseDown(with event: NSEvent) {
+    mouseMDown = true
+    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown, mouseMDown);
+  }
+  override func otherMouseUp(with event: NSEvent) {
+    mouseMDown = false
+    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown, mouseMDown);
   }
   override func mouseMoved(with event: NSEvent) {
     let pos = event.locationInWindow
     mouseX = Float(pos.x * backingScaleFactor - bounds.width / 2)
     mouseY = Float((bounds.height - pos.y) * backingScaleFactor - bounds.height / 2)
-    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown);
+    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown, mouseMDown);
   }
   override func mouseDragged(with event: NSEvent) {
-    let pos = event.locationInWindow
-    mouseX = Float(pos.x * backingScaleFactor - bounds.width / 2)
-    mouseY = Float((bounds.height - pos.y) * backingScaleFactor - bounds.height / 2)
-    set_mouse_state(mouseX, mouseY, mouseLDown, mouseRDown);
+    mouseMoved(with: event)
+  }
+  override func rightMouseDragged(with event: NSEvent) {
+    mouseMoved(with: event)
+  }
+  override func otherMouseDragged(with event: NSEvent) {
+    mouseMoved(with: event)
   }
   override func keyDown(with event: NSEvent) {
     handleKey(event)

@@ -97,7 +97,7 @@ Polygon* partition_triangles(Polygon* poly, size_t* output_count) {
   return partition(poly, output_count, false, [] (TPPLPartition* part, TPPLPoly* poly, std::list<TPPLPoly>* res) { part->Triangulate_OPT(poly, res); });
 }
 
-void draw_polygon(Polygon* poly) {
+void draw_polygon(Polygon* poly, float r, float g, float b) {
   if (!validate_polygon(poly)) {
     return;
   }
@@ -110,8 +110,8 @@ void draw_polygon(Polygon* poly) {
       .y2 = entity_to_screen(poly->triangles[i].points[1].y),
       .x3 = entity_to_screen(poly->triangles[i].points[2].x),
       .y3 = entity_to_screen(poly->triangles[i].points[2].y),
-      .g = 1,
-      .b = 1,
+      .z = entity_to_screen(poly->z),
+      .r = r, .g = g, .b = b,
       .reuse_attrs = i > 0,
     });
   }

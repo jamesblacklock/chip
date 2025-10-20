@@ -25,11 +25,12 @@ void update_pixart_unit() {
 }
 
 void visit_entities(void (*visitor)(Entity*, void*), void* data) {
-  for (size_t i=0; i < Entity_FreelistSize; i++) {
-    if (Entity_FreelistHeap[i].free) {
+  for (size_t i=1; i <= Entity_FreelistSize; i++) {
+    size_t r = Entity_FreelistSize - i;
+    if (Entity_FreelistHeap[r].free) {
       continue;
     }
-    visitor(&Entity_FreelistHeap[i].item, data);
+    visitor(&Entity_FreelistHeap[r].item, data);
   }
 }
 
@@ -94,19 +95,19 @@ static void render_entity(Entity* entity, void* _data) {
     return;
   }
   if (entity->poly.points != NULL) {
-    draw_polygon(&entity->poly);
-    return;
+    draw_polygon(&entity->poly, entity->color.r, entity->color.g, entity->color.b);
+  } else {
+    draw_quad((QuadData){
+      .x = entity->x,
+      .y = entity->y,
+      .w = entity->w,
+      .h = entity->h,
+      .angle = entity->angle,
+      .r = entity->color.r,
+      .g = entity->color.g,
+      .b = entity->color.b,
+    });
   }
-  draw_quad((QuadData){
-    .x = entity->x,
-    .y = entity->y,
-    .w = entity->w,
-    .h = entity->h,
-    .angle = entity->angle,
-    .r = entity->color.r,
-    .g = entity->color.g,
-    .b = entity->color.b,
-  });
 }
 
 void enable_entity(Entity* entity) {

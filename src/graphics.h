@@ -8,6 +8,7 @@ typedef struct QuadData {
   float h;
   float x;
   float y;
+  float z;
   float r;
   float g;
   float b;
@@ -19,6 +20,7 @@ typedef struct LineData {
   float y1;
   float x2;
   float y2;
+  float z;
   float w;
   float r;
   float g;
@@ -34,6 +36,7 @@ typedef struct TriangleData {
   float y2;
   float x3;
   float y3;
+  float z;
   float r;
   float g;
   float b;
@@ -49,9 +52,11 @@ typedef struct TriangleData {
 
 EXTERN_C void begin_render();
 EXTERN_C void end_render();
+EXTERN_C void set_view_coords(float x, float y, float z);
 EXTERN_C void draw_quad(QuadData data);
 EXTERN_C void draw_triangle(TriangleData data);
 EXTERN_C void draw_line(LineData data);
+EXTERN_C float screen_to_z0(float n);
 EXTERN_C bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, uint32_t fb_height);
 void surface_dimensions_changed(uint32_t fb_width, uint32_t fb_height);
 EXTERN_C void cleanup_vulkan();

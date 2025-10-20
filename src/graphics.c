@@ -8,11 +8,13 @@
 
 const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 const size_t MAX_TRIANGLES = 20000;
-
 // MAX_TRIANGLES = 20000
 // 10,000 quads
 // gfx memory allocation approx. 1.2 MB
 // main memory allocation approx. 950 KB
+
+#define NEUTRAL_Z_DIST -1000
+// NEUTRAL_Z_DIST is the distance that the camera must be from an point for its coordinates to be exactly pixel-sized 
 
 typedef struct VkTrianglePoint {
   vec2 pos;
@@ -90,6 +92,7 @@ static TriangleData g_triangle_data[MAX_FRAMES_IN_FLIGHT][MAX_TRIANGLES];
 static RenderContext g_ctx[MAX_FRAMES_IN_FLIGHT];
 
 static UBO g_ubo;
+static float g_z;
 
 static uint32_t clamp(uint32_t n, uint32_t min, uint32_t max) {
   return n > max ? max : n < min ? min : n;
@@ -291,9 +294,6 @@ static bool create_swapchain() {
     }
   }
 
-  glm_mat4_identity(g_ubo.view);
-  glm_mat4_identity(g_ubo.proj);
-
   printf("Vulkan swapchain setup complete\n");
 
   return true;
@@ -386,6 +386,9 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
   g_surface = surface;
   g_fb_width = fb_width;
   g_fb_height = fb_height;
+
+  set_view_coords(0, 0, 0);
+  glm_mat4_identity(g_ubo.proj);
 
   uint32_t device_count;
   vkEnumeratePhysicalDevices(instance, &device_count, NULL);
@@ -856,14 +859,13 @@ void draw_quad(QuadData data) {
     .x1 = x1, .y1 = y1,
     .x2 = x1, .y2 = y2,
     .x3 = x2, .y3 = y2,
+    .z = data.z,
     .r = data.r, .g = data.g, .b = data.b,
   };
   g_triangle_data[g_frame_index][ctx->triangle_index++] = (TriangleData){
-    .ox = data.x, .oy = data.y, .angle = data.angle,
     .x1 = x1, .y1 = y1,
     .x2 = x2, .y2 = y2,
     .x3 = x2, .y3 = y1,
-    .r = data.r, .g = data.g, .b = data.b,
     .reuse_attrs = true,
   };
 }
@@ -877,6 +879,7 @@ void draw_line(LineData data) {
     .x = dx/2 + data.x1,
     .y = dy/2 + data.y1,
     .w = dist(dx, dy),
+    .z = data.z,
     .h = data.w,
     .angle = atan(dy/dx),
     .r = data.r,
@@ -902,6 +905,16 @@ void draw_triangle(TriangleData data) {
   g_triangle_data[g_frame_index][ctx->triangle_index++] = data;
 }
 
+void set_view_coords(float x, float y, float z) {
+  g_z = NEUTRAL_Z_DIST + z;
+  glm_mat4_identity(g_ubo.view);
+  glm_translate(g_ubo.view, (vec3){x, y, -g_z});
+}
+
+float screen_to_z0(float n) {
+  return n * (g_z/NEUTRAL_Z_DIST);
+}
+
 void end_render() {
   RenderContext* ctx = &g_ctx[g_frame_index];
   memcpy(g_ubuf_map[g_frame_index], &g_ubo, sizeof(UBO));
@@ -917,7 +930,7 @@ void end_render() {
     } else {
       VkAttr attr_data = { .color = {data->r, data->g, data->b} };
       glm_mat4_identity(attr_data.transform);
-      vec3 point = {data->ox, data->oy, 0};
+      vec3 point = {data->ox, data->oy, data->z};
       glm_translate(attr_data.transform, point);
       glm_rotate(attr_data.transform, data->angle, (vec3){0,0,1});
       memcpy(sbuf_stg_map, &attr_data, sizeof(VkAttr));

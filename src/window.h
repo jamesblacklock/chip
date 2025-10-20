@@ -69,18 +69,29 @@
 #define KEY_DOWN 211
 #define KEY_UP 212
 
+#define KEY_COUNT 213
+
+#define MOUSE_LEFT 0
+#define MOUSE_RIGHT 1
+#define MOUSE_MIDDLE 2
+#define MOUSE_BUTTON_COUNT 3
+
 void set_key_state(size_t key, bool state);
-void set_mouse_state(float x, float y, bool l, bool r);
+void set_mouse_state(float x, float y, bool l, bool r, bool m);
+void set_scroll_state(float x, float y);
 void init_window(uint32_t width, uint32_t height);
 void window_closed();
 void window_resized(uint32_t width, uint32_t height);
 
 typedef struct Window {
-  bool keys[500];
+  bool keys[KEY_COUNT];
+  bool mouse_buttons[MOUSE_BUTTON_COUNT];
+  bool last_frame_keys[KEY_COUNT];
+  bool last_frame_mouse_buttons[MOUSE_BUTTON_COUNT];
   float mouse_x;
   float mouse_y;
-  bool mouse_left;
-  bool mouse_right;
+  float scroll_x;
+  float scroll_y;
   bool closed;
   float pixart_unit;
   uint32_t width;

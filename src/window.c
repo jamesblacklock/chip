@@ -22,11 +22,17 @@ void set_key_state(size_t key, bool state) {
   window.keys[key] = state;
 }
 
-void set_mouse_state(float x, float y, bool l, bool r) {
+void set_mouse_state(float x, float y, bool l, bool r, bool m) {
   window.mouse_x = x;
   window.mouse_y = y;
-  window.mouse_left = l;
-  window.mouse_right = r;
+  window.mouse_buttons[MOUSE_LEFT] = l;
+  window.mouse_buttons[MOUSE_RIGHT] = r;
+  window.mouse_buttons[MOUSE_MIDDLE] = m;
+}
+
+void set_scroll_state(float x, float y) {
+  window.scroll_x = x;
+  window.scroll_y = y;
 }
 
 void window_closed() {

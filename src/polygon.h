@@ -16,6 +16,7 @@ typedef struct Polygon {
   size_t count;
   struct Polygon* triangles;
   size_t triangle_count;
+  float z;
 } Polygon;
 
 #ifdef __cplusplus
@@ -29,7 +30,7 @@ EXTERN_C Polygon* partition_triangles(Polygon* poly, size_t* output_count);
 EXTERN_C Polygon create_polygon(float points[][2], size_t count);
 EXTERN_C void free_polygons(Polygon* polys, size_t count);
 EXTERN_C void free_polygon(Polygon* poly);
-EXTERN_C void draw_polygon(Polygon* poly);
+EXTERN_C void draw_polygon(Polygon* poly, float r, float g, float b);
 EXTERN_C bool validate_polygon(Polygon* poly);
 
 #endif
