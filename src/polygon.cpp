@@ -2,6 +2,7 @@
 #include <list>
 #include <stdlib.h>
 
+#include "main.h"
 #include "polygon.h"
 #include "graphics.h"
 #include "entity.h"
@@ -49,6 +50,7 @@ extern "C" {
 
 Polygon create_polygon(float points[][2], size_t count) {
   Polygon p = {
+    .__so.object_type = OBJECT_TYPE_POLYGON,
     .count = count,
     .points = (Point*) malloc(sizeof(Point) * count),
     .triangle_count = 0,

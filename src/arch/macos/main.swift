@@ -2,7 +2,7 @@ import AppKit
 
 func initWrapper(_ appPath: String, _ vkInst: VkInstance, _ vkSurface: VkSurfaceKHR, _ width: UInt32, _ height: UInt32) -> Bool {
   return appPath.withCString { appPathCString in
-    return `init`(appPathCString, vkInst, vkSurface, width, height)
+    return `init`(CommandLine.argc, CommandLine.unsafeArgv, appPathCString, vkInst, vkSurface, width, height)
   }
 }
 

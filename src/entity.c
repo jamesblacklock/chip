@@ -66,7 +66,6 @@ void attach_body(Entity* entity, bool dynamic) {
   if (entity->poly.points) {
     size_t poly_count;
     Polygon* convexes = partition_convex(&entity->poly, &poly_count);
-    printf("convexes %d\n", poly_count);
     for (size_t i=0; i < poly_count; i++) {
       b2ShapeDef shapeDef = b2DefaultShapeDef();
       shapeDef.density = 1.0f;

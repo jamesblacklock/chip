@@ -9,9 +9,9 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/macos/Game.app/Contents/MacOS/game",
-      "args": [],
+      "args": ["mapeditor", "map1.map"],
       "stopAtEntry": false,
-      "cwd": "${fileDirname}",
+      "cwd": "${workspaceFolder}",
       "environment": [],
       "externalConsole": false,
       "MIMode": "lldb"

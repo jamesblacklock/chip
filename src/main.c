@@ -3,6 +3,13 @@
 #include <stdlib.h>
 #include <sys/stat.h>
 #include <math.h>
+#ifdef WIN32
+#include <io.h>
+#define F_OK 0
+#define access _access
+#else
+#include <unistd.h>
+#endif
 
 #include "main.h"
 #include "window.h"
@@ -10,44 +17,80 @@
 #include "graphics.h"
 #include "polygon.h"
 
-static char* app_path;
+static bool init_map_editor();
+static bool map_editor(size_t ms);
+static bool nothing(size_t ms) {
+  fprintf(stderr, "no mode selected\n");
+  return false;
+}
 
-bool init(const char* app_path0, VkInstance instance, VkSurfaceKHR surface, uint32_t width, uint32_t height) {
+static char* app_path;
+static uint32_t mode;
+static bool (*tick_routine)(size_t) = nothing;
+
+struct {
+  const char* file;
+  Entity* polygons[6000];
+  ptrdiff_t polygon_index;
+  ptrdiff_t redo_polygon_index;
+} MapEditor;
+
+void process_argv(int argc, char** argv) {
+  if (argc < 2) {
+    return;
+  }
+  if (strcmp(argv[1], "mapeditor") == 0) {
+    if (2 >= argc) {
+      printf("invalid parameters; expected file path following \"mapeditor\"\n");
+      exit(1);
+    }
+    MapEditor.file = argv[2];
+    tick_routine = map_editor;
+  }
+}
+
+bool init(int argc, char** argv, const char* app_path0, VkInstance instance, VkSurfaceKHR surface, uint32_t width, uint32_t height) {
   size_t len = strlen(app_path0);
   app_path = malloc(len + 1);
   strncpy(app_path, app_path0, len);
   app_path[len] = 0;
 
   init_window(width, height);
-  init_entities();
+  process_argv(argc, argv);
   return init_vulkan(instance, surface, width, height);
 }
 
 byte* read_file(const char* filename, size_t* size) {
-  char* absolute_path = malloc(strlen(filename) + strlen(app_path) + 1);
-  absolute_path[0] = 0;
-  strcat(absolute_path, app_path);
-  strcat(absolute_path, filename);
-
   struct stat info;
-  int res = stat(absolute_path, &info);
+  int res = stat(filename, &info);
   if (res != 0) {
-    fprintf(stderr, "failed to stat file: %s\n", absolute_path);
+    fprintf(stderr, "failed to stat file: %s\n", filename);
     exit(1);
   }
   byte* buf = malloc(info.st_size);
-  FILE* file = fopen(absolute_path, "rb");
+  FILE* file = fopen(filename, "rb");
   if (file == NULL) {
-    fprintf(stderr, "failed to open file: %s\n", absolute_path);
+    fprintf(stderr, "failed to open file: %s\n", filename);
     exit(1);
   }
   size_t bytes_read = fread(buf, 1, info.st_size, file);
   if (bytes_read != info.st_size) {
-    fprintf(stderr, "failed to read file: %s\n", absolute_path);
+    fprintf(stderr, "failed to read file: %s\n", filename);
     exit(1);
   }
-  *size = bytes_read;
+  if (size != NULL) {
+    *size = bytes_read;
+  }
+  fclose(file);
   return buf;
+}
+
+byte* load_app_resource(const char* filename, size_t* size) {
+  char* absolute_path = malloc(strlen(filename) + strlen(app_path) + 1);
+  absolute_path[0] = 0;
+  strcat(absolute_path, app_path);
+  strcat(absolute_path, filename);
+  return read_file(absolute_path, size);
 }
 
 void cleanup() {
@@ -182,21 +225,127 @@ static void box_screensaver(size_t ms) {
   visit_entities(box_screensaver_update_entity, &(EntityUpdateData){ .bloop = bloop, .ms = ms });
 }
 
-static void draw_polygons() {
-  static bool mouse_down = false;
-  static bool esc_down = false;
-  static bool undo = false;
-  static bool redo = false;
-  static bool closing = false;
+SerializableObject* read_object(FILE* fp) {
+  int16_t type;
+  fread(&type, sizeof(int16_t), 1, fp);
+  switch (type) {
+    case OBJECT_TYPE_POLYGON: {
+      uint16_t point_count;
+      fread(&point_count, sizeof(uint16_t), 1, fp);
+      if (point_count > 1000) {
+        fprintf(stderr, "encountered invalid polygon point count: %u\n", point_count);
+        return NULL;
+      }
+      Polygon* polygon = malloc(sizeof(Polygon));
+      Point* points = malloc(sizeof(Point) * point_count);
+      fread(points, sizeof(Point), point_count, fp);
+      *polygon = create_polygon((void*)points, point_count);
+      free(points);
+      printf("read polygon with %u points\n", point_count);
+      return (SerializableObject*) polygon;
+    }
+    case OBJECT_TYPE_EOF: {
+      printf("read end-of-file marker\n");
+      return NULL;
+    }
+    default: {
+      fprintf(stderr, "encountered invalid object type: %d\n", type);
+      return NULL;
+    }
+  }
+}
+
+void write_eof(FILE* fp) {
+  int16_t type = OBJECT_TYPE_EOF;
+  fwrite(&type, sizeof(int16_t), 1, fp);
+  printf("wrote end-of-file marker\n\n");
+}
+
+void write_object(void* object, FILE* fp) {
+  SerializableObject* object_ = object;
+  fwrite(&object_->object_type, sizeof(int16_t), 1, fp);
+  switch (object_->object_type) {
+    case OBJECT_TYPE_POLYGON: {
+      Polygon* poly = (Polygon*) object;
+      uint16_t point_count = poly->count;
+      fwrite(&point_count, sizeof(uint16_t), 1, fp);
+      fwrite(poly->points, sizeof(Point), point_count, fp);
+      printf("wrote polygon with %u points\n", point_count);
+      return;
+    }
+    case OBJECT_TYPE_EOF: {
+      printf("wrote end-of-file marker\n");
+      return;
+    }
+    default: {
+      fprintf(stderr, "encountered invalid object type: %d\n", object_->object_type);
+      return;
+    }
+  }
+
+}
+
+static bool map_editor_save() {
+  FILE* fp = fopen(MapEditor.file, "wb");
+  for (size_t i=0; i <= MapEditor.polygon_index; i++) {
+    write_object(&MapEditor.polygons[i]->poly, fp);
+  }
+  write_eof(fp);
+  fclose(fp);
+  return true;
+}
+
+static bool map_editor_load() {
+  FILE* fp = fopen(MapEditor.file, "rb");
+  Polygon* poly = (Polygon*) read_object(fp);
+  while (poly != NULL) {
+    if (poly->__so.object_type != OBJECT_TYPE_POLYGON) {
+      printf("encountered unexpected object: %d", poly->__so.object_type);
+      continue;
+    }
+    if (validate_polygon(poly)) {
+      MapEditor.polygons[++MapEditor.polygon_index] = create_entity((Entity){ .poly = *poly });
+      attach_body(MapEditor.polygons[MapEditor.polygon_index], false);
+    }
+    free(poly);
+    poly = (Polygon*) read_object(fp);
+  }
+  fclose(fp);
+  return true;
+}
+
+static bool init_map_editor() {
+  MapEditor.polygon_index = -1;
+  MapEditor.redo_polygon_index = -1;
+  init_entities();
+  if (access(MapEditor.file, F_OK) == 0) {
+    printf("loading existing map \"%s\"\n", MapEditor.file);
+    map_editor_load();
+  } else {
+    printf("creating new map \"%s\"\n", MapEditor.file);
+  }
+  return true;
+}
+
+static bool map_editor(size_t ms) {
+  static bool mouse_down;
+  static bool esc_down;
+  static bool undo;
+  static bool redo;
+  static bool save;
+  static bool closing;
+  static bool init;
+
+  if (!init && !init_map_editor()) {
+    return false;
+  }
+  init = true;
 
   const size_t MAX_POINTS = 100;
   static float points[MAX_POINTS][2];
   static float current_point[2];
   static ptrdiff_t point_index = -1;
   static ptrdiff_t redo_point_index = -1;
-  static Entity* polygons[6000];
-  static ptrdiff_t polygon_index = -1;
-  static ptrdiff_t redo_polygon_index = -1;
 
   float x = window_to_entity(window.mouse_x);
   float y = window_to_entity(window.mouse_y);
@@ -212,18 +361,22 @@ static void draw_polygons() {
   if (!undo && (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && !window.keys[KEY_LSHIFT] && window.keys[KEY_Z]) {
     if (point_index >= 0) {
       point_index--;
-    } else if (polygon_index >= 0) {
-      disable_entity(polygons[polygon_index--]);
+    } else if (MapEditor.polygon_index >= 0) {
+      disable_entity(MapEditor.polygons[MapEditor.polygon_index--]);
     }
     window.keys[KEY_Z] = false; // TODO: fix the macOS issue where keyUp is not reported while Meta is held
   }
   if (!redo && (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && window.keys[KEY_LSHIFT] && window.keys[KEY_Z]) {
-    if (polygon_index < redo_polygon_index) {
-      enable_entity(polygons[++polygon_index]);
+    if (MapEditor.polygon_index < MapEditor.redo_polygon_index) {
+      enable_entity(MapEditor.polygons[++MapEditor.polygon_index]);
     } else if (point_index < redo_point_index) {
       point_index++;
     } 
     window.keys[KEY_Z] = false; // TODO: fix the macOS issue where keyUp is not reported while Meta is held
+  }
+  if (!save && (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && window.keys[KEY_S]) {
+    map_editor_save();
+    window.keys[KEY_S] = false; // TODO: fix the macOS issue where keyUp is not reported while Meta is held
   }
 
   if (!esc_down && window.keys[KEY_ESC]) {
@@ -237,8 +390,8 @@ static void draw_polygons() {
       points[point_index][1] = points[0][1];
       Polygon poly = create_polygon(points, point_index);
       if (validate_polygon(&poly)) {
-        polygons[++polygon_index] = create_entity((Entity){ .poly = poly });
-        attach_body(polygons[polygon_index], false);
+        MapEditor.polygons[++MapEditor.polygon_index] = create_entity((Entity){ .poly = poly });
+        attach_body(MapEditor.polygons[MapEditor.polygon_index], false);
       } else {
         free_polygon(&poly);
       }
@@ -261,7 +414,7 @@ static void draw_polygons() {
       }
     }
     redo_point_index = point_index;
-    redo_polygon_index = polygon_index;
+    MapEditor.redo_polygon_index = MapEditor.polygon_index;
   }
   if (point_index >= 0) {
     if (window.keys[KEY_LSHIFT]) {
@@ -289,6 +442,15 @@ static void draw_polygons() {
     current_point[1] = y;
   }
 
+  mouse_down = window.mouse_left;
+  esc_down = window.keys[KEY_ESC];
+  undo = (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && !window.keys[KEY_LSHIFT] && window.keys[KEY_Z];
+  redo = (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && window.keys[KEY_LSHIFT] && window.keys[KEY_Z];
+  save = (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && window.keys[KEY_S];
+
+  // render
+  begin_render();
+  render_entities();
   if (point_index >= 0) {
     for (ptrdiff_t i=0; i < point_index; i++) {
       float x1 = entity_to_screen(points[i][0]);
@@ -323,29 +485,14 @@ static void draw_polygons() {
       .r = 1,
     });
   }
+  end_render();
 
-  mouse_down = window.mouse_left;
-  esc_down = window.keys[KEY_ESC];
-  undo = (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && !window.keys[KEY_LSHIFT] && window.keys[KEY_Z];
-  undo = (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && window.keys[KEY_LSHIFT] && window.keys[KEY_Z];
+  return !window.closed;
 }
 
 bool tick(size_t ms) {
-  if (window.closed) {
-    return false;
-  }
-
-  box_spawn();
-
-  update_entities();
-
-  begin_render();
-  render_entities();
-  draw_polygons();
-  end_render();
-
   if (window.keys[KEY_LMETA] && (window.keys[KEY_Q] || window.keys[KEY_W])) {
     window.closed = true;
   }
-  return !window.closed;
+  return tick_routine(ms);
 }

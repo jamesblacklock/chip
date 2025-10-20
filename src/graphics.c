@@ -136,7 +136,7 @@ void cleanup_vulkan() {
 
 static VkShaderModule load_shader(const char* filename) {
   size_t size;
-  byte* bytes = read_file(filename, &size);
+  byte* bytes = load_app_resource(filename, &size);
   VkShaderModuleCreateInfo create_info = {
     .sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
     .codeSize = size,

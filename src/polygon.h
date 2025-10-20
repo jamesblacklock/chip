@@ -3,12 +3,15 @@
 
 #include <stdlib.h>
 
+#include "main.h"
+
 typedef struct Point {
   float x;
   float y;
 } Point;
 
 typedef struct Polygon {
+  SerializableObject __so;
   Point* points;
   size_t count;
   struct Polygon* triangles;

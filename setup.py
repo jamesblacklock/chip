@@ -41,9 +41,16 @@ def build_repo(repo: str, include="include"):
     if not Path(f"./deps/macos/lib/lib{name}.a").is_file():
       shutil.copyfile(f"./deps/macos/src/{name}/build/lib{name}.a", f"./deps/macos/lib/lib{name}.a")
 
+try:
+  i = sys.argv.index("--")
+  setup_args = sys.argv[1:i]
+  exe_args = sys.argv[i+1:]
+except:
+  setup_args = sys.argv[1:]
+  exe_args = []
 
 def arg(arg: str):
-  return arg in sys.argv[1:]
+  return arg in setup_args
 
 def exec(*cmd: List[str], cwd: str | None = None):
   res = subprocess.run(cmd, stderr=subprocess.STDOUT, cwd=cwd)
@@ -178,6 +185,6 @@ if build:
 
 if run:
   try:
-    exec("./build/macos/Game.app/Contents/MacOS/game")
+    exec("./build/macos/Game.app/Contents/MacOS/game", *exe_args)
   except KeyboardInterrupt:
     pass
