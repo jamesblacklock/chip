@@ -57,6 +57,8 @@ EXTERN_C void draw_quad(QuadData data);
 EXTERN_C void draw_triangle(TriangleData data);
 EXTERN_C void draw_line(LineData data);
 EXTERN_C float screen_to_z0(float n);
+EXTERN_C float screen_x_to_z0(float x);
+EXTERN_C float screen_y_to_z0(float y);
 EXTERN_C bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, uint32_t fb_height);
 void surface_dimensions_changed(uint32_t fb_width, uint32_t fb_height);
 EXTERN_C void cleanup_vulkan();

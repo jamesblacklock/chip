@@ -92,6 +92,8 @@ static TriangleData g_triangle_data[MAX_FRAMES_IN_FLIGHT][MAX_TRIANGLES];
 static RenderContext g_ctx[MAX_FRAMES_IN_FLIGHT];
 
 static UBO g_ubo;
+static float g_x;
+static float g_y;
 static float g_z;
 
 static uint32_t clamp(uint32_t n, uint32_t min, uint32_t max) {
@@ -907,12 +909,20 @@ void draw_triangle(TriangleData data) {
 
 void set_view_coords(float x, float y, float z) {
   g_z = NEUTRAL_Z_DIST + z;
+  g_x = x;
+  g_y = y;
   glm_mat4_identity(g_ubo.view);
   glm_translate(g_ubo.view, (vec3){x, y, -g_z});
 }
 
 float screen_to_z0(float n) {
   return n * (g_z/NEUTRAL_Z_DIST);
+}
+float screen_x_to_z0(float x) {
+  return x * (g_z/NEUTRAL_Z_DIST) - g_x;
+}
+float screen_y_to_z0(float y) {
+  return y * (g_z/NEUTRAL_Z_DIST) - g_y;
 }
 
 void end_render() {

@@ -384,8 +384,8 @@ static bool map_editor(size_t ms) {
   static ptrdiff_t point_index = -1;
   static ptrdiff_t redo_point_index = -1;
 
-  float x = window_to_entity(screen_to_z0(window.mouse_x));
-  float y = window_to_entity(screen_to_z0(window.mouse_y));
+  float x = window_to_entity(screen_x_to_z0(window.mouse_x));
+  float y = window_to_entity(screen_y_to_z0(window.mouse_y));
 
   float grid_snap = screen_to_z0(window.keys[KEY_LCTRL] ? 10 : window.keys[KEY_LALT] ? 0.01 : 2);
   float angle_snap = window.keys[KEY_LALT] ? M_PI/16 : M_PI/4;
@@ -406,7 +406,7 @@ static bool map_editor(size_t ms) {
       enable_entity(MapEditor.polygons[++MapEditor.polygon_index]);
     } else if (point_index < redo_point_index) {
       point_index++;
-    } 
+    }
     window.keys[KEY_Z] = false; // TODO: fix the macOS issue where keyUp is not reported while Meta is held
   }
   if (!save && (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && window.keys[KEY_S]) {
@@ -469,7 +469,8 @@ static bool map_editor(size_t ms) {
       y = dy + prev_y;
     }
 
-    closing = point_index > 1 && !window.keys[KEY_LALT] && fabsf(x - points[0][0]) < 6 && fabsf(y - points[0][1]) < 6;
+    float close_dist = screen_to_z0(5);
+    closing = point_index > 1 && !window.keys[KEY_LALT] && fabsf(x - points[0][0]) < close_dist && fabsf(y - points[0][1]) < close_dist;
     if (closing) {
       x = points[0][0];
       y = points[0][1];
