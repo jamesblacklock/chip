@@ -30,9 +30,11 @@ void set_mouse_state(float x, float y, bool l, bool r, bool m) {
   window.mouse_buttons[MOUSE_MIDDLE] = m;
 }
 
-void set_scroll_state(float x, float y) {
-  window.scroll_x = x;
-  window.scroll_y = y;
+void set_scroll_state(float delta_x, float delta_y) {
+  window.scroll_x += delta_x;
+  window.scroll_y += delta_y;
+  window.scroll_x_delta = delta_x;
+  window.scroll_y_delta = delta_y;
 }
 
 void window_closed() {

@@ -44,6 +44,9 @@ typedef struct TriangleData {
   bool reuse_attrs;
 } TriangleData;
 
+#define NEUTRAL_Z_DIST -1000
+// NEUTRAL_Z_DIST is the distance that the camera must be from an point for its coordinates to be exactly pixel-sized 
+
 #ifdef __cplusplus
 #define EXTERN_C extern "C"
 #else

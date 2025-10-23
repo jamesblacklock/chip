@@ -82,8 +82,6 @@ class GameView: NSView {
   var keyRalt = false
   var mouseX: Float = 0.0;
   var mouseY: Float = 0.0;
-  var scrollX: Float = 0.0;
-  var scrollY: Float = 0.0;
   var mouseLDown = false;
   var mouseRDown = false;
   var mouseMDown = false;
@@ -109,9 +107,11 @@ class GameView: NSView {
   }
 
   override func scrollWheel(with event: NSEvent) {
-    scrollX += Float(event.hasPreciseScrollingDeltas ? event.scrollingDeltaX : -abs(event.scrollingDeltaX) / event.scrollingDeltaX * 10)
-    scrollY += Float(event.hasPreciseScrollingDeltas ? event.scrollingDeltaY : -abs(event.scrollingDeltaY) / event.scrollingDeltaY * 10)
-    set_scroll_state(scrollX, scrollY)
+    var x = Float(event.scrollingDeltaX.isNaN ? 0 : event.scrollingDeltaX)
+    var y = Float(event.scrollingDeltaY.isNaN ? 0 : event.scrollingDeltaY)
+    x = -(event.hasPreciseScrollingDeltas ? x : abs(x) / x * 10)
+    y = -(event.hasPreciseScrollingDeltas ? y : abs(y) / y * 10)
+    set_scroll_state(x, y)
   }
 
   override func mouseDown(with event: NSEvent) {

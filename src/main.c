@@ -370,12 +370,12 @@ static bool map_editor(size_t ms) {
   }
   init = true;
 
-  static float view_x, view_y, view_z;
+  static float view_x, view_y, view_z = NEUTRAL_Z_DIST;
   float drag_view_x, drag_view_y;
   drag_delta(&drag_view_x, &drag_view_y, MOUSE_MIDDLE);
   view_x += screen_to_z0(drag_view_x);
   view_y += screen_to_z0(drag_view_y);
-  view_z = window.scroll_y < 0 ? (-window.scroll_y*window.scroll_y)/10 : sqrt(window.scroll_y * 2000);
+  view_z += view_z * window.scroll_y_delta / 100;
   set_view_coords(view_x, view_y, view_z);
 
   const size_t MAX_POINTS = 100;
@@ -518,5 +518,7 @@ bool tick(size_t ms) {
   bool res = tick_routine(ms);
   memcpy(window.last_frame_mouse_buttons, window.mouse_buttons, sizeof(window.mouse_buttons));
   memcpy(window.last_frame_keys, window.keys, sizeof(window.keys));
+  window.scroll_x_delta = 0;
+  window.scroll_y_delta = 0;
   return res;
 }

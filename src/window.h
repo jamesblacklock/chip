@@ -92,6 +92,8 @@ typedef struct Window {
   float mouse_y;
   float scroll_x;
   float scroll_y;
+  float scroll_x_delta;
+  float scroll_y_delta;
   bool closed;
   float pixart_unit;
   uint32_t width;

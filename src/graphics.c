@@ -13,9 +13,6 @@ const size_t MAX_TRIANGLES = 20000;
 // gfx memory allocation approx. 1.2 MB
 // main memory allocation approx. 950 KB
 
-#define NEUTRAL_Z_DIST -1000
-// NEUTRAL_Z_DIST is the distance that the camera must be from an point for its coordinates to be exactly pixel-sized 
-
 typedef struct VkTrianglePoint {
   vec2 pos;
   uint32_t attr_id;
@@ -389,7 +386,7 @@ bool init_vulkan(VkInstance instance, VkSurfaceKHR surface, uint32_t fb_width, u
   g_fb_width = fb_width;
   g_fb_height = fb_height;
 
-  set_view_coords(0, 0, 0);
+  set_view_coords(0, 0, NEUTRAL_Z_DIST);
   glm_mat4_identity(g_ubo.proj);
 
   uint32_t device_count;
@@ -908,9 +905,9 @@ void draw_triangle(TriangleData data) {
 }
 
 void set_view_coords(float x, float y, float z) {
-  g_z = NEUTRAL_Z_DIST + z;
   g_x = x;
   g_y = y;
+  g_z = z;
   glm_mat4_identity(g_ubo.view);
   glm_translate(g_ubo.view, (vec3){x, y, -g_z});
 }
