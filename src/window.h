@@ -82,6 +82,9 @@ void set_scroll_state(float x, float y);
 void init_window(uint32_t width, uint32_t height);
 void window_closed();
 void window_resized(uint32_t width, uint32_t height);
+bool mouse_pressed(uint32_t button);
+bool key_pressed(uint32_t key);
+bool drag_delta(float* x, float* y, uint32_t button);
 
 typedef struct Window {
   bool keys[KEY_COUNT];

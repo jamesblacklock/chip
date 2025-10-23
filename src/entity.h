@@ -31,6 +31,13 @@ typedef struct Entity {
   bool enabled;
 } Entity;
 
+typedef struct Map {
+  Entity** polygons;
+  size_t polygon_count;
+} Map;
+
+#define MAP_MAX_ENTITIES 6000
+
 #ifdef __cplusplus
 #define EXTERN_C extern "C"
 #else
@@ -43,7 +50,7 @@ extern b2WorldId world;
 EXTERN_C Entity* create_entity(Entity new_entity);
 EXTERN_C void enable_entity(Entity* entity);
 EXTERN_C void disable_entity(Entity* entity);
-EXTERN_C void destroy_entity(Entity* entity);
+EXTERN_C void free_entity(Entity* entity);
 EXTERN_C void attach_body(Entity* entity, bool dynamic);
 
 EXTERN_C void init_entities();
@@ -53,5 +60,9 @@ EXTERN_C float entity_to_screen(float x);
 EXTERN_C void visit_entities(void (*visitor)(Entity*, void*), void* data);
 EXTERN_C void render_entities();
 EXTERN_C void update_entities();
+
+EXTERN_C bool save_map_file(const char* filename, Map* map);
+EXTERN_C Map load_map_file(const char* filename);
+EXTERN_C void free_map(Map* map);
 
 #endif

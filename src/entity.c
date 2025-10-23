@@ -1,6 +1,7 @@
 #include <math.h>
 #include <box2d/box2d.h>
 
+#include "main.h"
 #include "entity.h"
 #include "window.h"
 #include "graphics.h"
@@ -49,7 +50,7 @@ Entity* create_entity(Entity new_entity) {
   return entity;
 }
 
-void destroy_entity(Entity* entity) {
+void free_entity(Entity* entity) {
   Entity_FreelistFree(entity);
 }
 
@@ -98,10 +99,10 @@ static void render_entity(Entity* entity, void* _data) {
     draw_polygon(&entity->poly, entity->color.r, entity->color.g, entity->color.b);
   } else {
     draw_quad((QuadData){
-      .x = entity->x,
-      .y = entity->y,
-      .w = entity->w,
-      .h = entity->h,
+      .x = entity_to_screen(entity->x),
+      .y = entity_to_screen(entity->y),
+      .w = entity_to_screen(entity->w),
+      .h = entity_to_screen(entity->h),
       .angle = entity->angle,
       .r = entity->color.r,
       .g = entity->color.g,
@@ -141,4 +142,47 @@ static void update_entity(Entity* entity, void* _data) {
 void update_entities() {
   b2World_Step(world, 1.0/60.0, 10);
   visit_entities(update_entity, NULL);
+}
+
+bool save_map_file(const char* filename, Map* map) {
+  FILE* fp = fopen(filename, "wb");
+  for (size_t i=0; i < map->polygon_count; i++) {
+    write_object(&map->polygons[i]->poly, fp);
+  }
+  write_eof(fp);
+  fclose(fp);
+  return true;
+}
+
+Map load_map_file(const char* filename) {
+  FILE* fp = fopen(filename, "rb");
+  Polygon* poly = (Polygon*) read_object(fp);
+
+  Entity** entities = malloc(sizeof(Entity*) * MAP_MAX_ENTITIES);
+  size_t entity_count = 0;
+  while (poly != NULL) {
+    if (poly->__so.object_type != OBJECT_TYPE_POLYGON) {
+      printf("encountered unexpected object: %d", poly->__so.object_type);
+      continue;
+    }
+    if (validate_polygon(poly)) {
+      Color color = { rand() / (float) RAND_MAX, rand() / (float) RAND_MAX, rand() / (float) RAND_MAX };
+      entities[entity_count] = create_entity((Entity){ .poly = *poly, .color = color });
+      attach_body(entities[entity_count], false);
+      entity_count++;
+    }
+    free(poly);
+    poly = (Polygon*) read_object(fp);
+  }
+  fclose(fp);
+  entities = realloc(entities, sizeof(Entity*) * entity_count);
+  return (Map){ .polygons = entities, .polygon_count = entity_count };
+}
+
+void free_map(Map* map) {
+  if (map->polygons != NULL) {
+    for (size_t i=0; i < map->polygon_count; i++) {
+      free_entity(map->polygons[i]);
+    }
+  }
 }

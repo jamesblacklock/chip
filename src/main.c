@@ -4,53 +4,44 @@
 #include <sys/stat.h>
 #include <math.h>
 #include <time.h>
-#ifdef WIN32
-#include <io.h>
-#define F_OK 0
-#define access _access
-#else
-#include <unistd.h>
-#endif
 
 #include "main.h"
 #include "window.h"
 #include "entity.h"
 #include "graphics.h"
 #include "polygon.h"
-
-static bool init_map_editor();
-static bool map_editor(size_t ms);
-static bool nothing(size_t ms) {
-  fprintf(stderr, "no mode selected\n");
-  return false;
-}
+#include "map_editor.h"
+#include "play.h"
 
 static char* app_path;
-static uint32_t mode;
-static bool (*tick_routine)(size_t) = nothing;
+static Program program;
 
-struct {
-  const char* file;
-  Entity* polygons[6000];
-  ptrdiff_t polygon_index;
-  ptrdiff_t redo_polygon_index;
-} MapEditor;
-
-void process_argv(int argc, char** argv) {
+ExeArgs process_argv(int argc, char** argv) {
+  ExeArgs args = { .valid = false };
   if (argc < 2) {
-    return;
+    return args;
   }
   if (strcmp(argv[1], "mapeditor") == 0) {
     if (2 >= argc) {
       printf("invalid parameters; expected file path following \"mapeditor\"\n");
-      exit(1);
     }
-    MapEditor.file = argv[2];
-    tick_routine = map_editor;
+    program = program_map_editor;
+    args.map_editor.filename = argv[2];
+    args.valid = true;
+  } else if (strcmp(argv[1], "play") == 0) {
+    if (2 >= argc) {
+      printf("invalid parameters; expected file path following \"play\"\n");
+    }
+    program = program_play;
+    args.play.mapfile = argv[2];
+    args.valid = true;
+  } else {
+    printf("invalid parameters; valid program selections include:\n- mapeditor\n- play\n");
   }
+  return args;
 }
 
-bool init(int argc, char** argv, const char* app_path0, VkInstance instance, VkSurfaceKHR surface, uint32_t width, uint32_t height) {
+bool host_init(int argc, char** argv, const char* app_path0, VkInstance instance, VkSurfaceKHR surface, uint32_t width, uint32_t height) {
   srand(time(NULL));
 
   size_t len = strlen(app_path0);
@@ -59,8 +50,19 @@ bool init(int argc, char** argv, const char* app_path0, VkInstance instance, VkS
   app_path[len] = 0;
 
   init_window(width, height);
-  process_argv(argc, argv);
-  return init_vulkan(instance, surface, width, height);
+  ExeArgs args = process_argv(argc, argv);
+  if (!args.valid) {
+    return false;
+  }
+  if (!init_vulkan(instance, surface, width, height)) {
+    return false;
+  }
+  if (program.init) {
+    if (!program.init(args)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 byte* read_file(const char* filename, size_t* size) {
@@ -96,7 +98,7 @@ byte* load_app_resource(const char* filename, size_t* size) {
   return read_file(absolute_path, size);
 }
 
-void cleanup() {
+void host_cleanup() {
   cleanup_vulkan();
 }
 
@@ -285,237 +287,13 @@ void write_object(void* object, FILE* fp) {
       return;
     }
   }
-
 }
 
-static bool map_editor_save() {
-  FILE* fp = fopen(MapEditor.file, "wb");
-  for (size_t i=0; i <= MapEditor.polygon_index; i++) {
-    write_object(&MapEditor.polygons[i]->poly, fp);
-  }
-  write_eof(fp);
-  fclose(fp);
-  return true;
-}
-
-static bool map_editor_load() {
-  FILE* fp = fopen(MapEditor.file, "rb");
-  Polygon* poly = (Polygon*) read_object(fp);
-  while (poly != NULL) {
-    if (poly->__so.object_type != OBJECT_TYPE_POLYGON) {
-      printf("encountered unexpected object: %d", poly->__so.object_type);
-      continue;
-    }
-    if (validate_polygon(poly)) {
-      Color color = { rand() / (float) RAND_MAX, rand() / (float) RAND_MAX, rand() / (float) RAND_MAX };
-      MapEditor.polygons[++MapEditor.polygon_index] = create_entity((Entity){ .poly = *poly, .color = color });
-      attach_body(MapEditor.polygons[MapEditor.polygon_index], false);
-    }
-    free(poly);
-    poly = (Polygon*) read_object(fp);
-  }
-  MapEditor.redo_polygon_index = MapEditor.polygon_index;
-  fclose(fp);
-  return true;
-}
-
-static bool init_map_editor() {
-  MapEditor.polygon_index = -1;
-  MapEditor.redo_polygon_index = -1;
-  init_entities();
-  if (access(MapEditor.file, F_OK) == 0) {
-    printf("loading existing map \"%s\"\n", MapEditor.file);
-    map_editor_load();
-  } else {
-    printf("creating new map \"%s\"\n", MapEditor.file);
-  }
-  return true;
-}
-
-static bool mouse_pressed(uint32_t button) {
-  return !window.last_frame_mouse_buttons[button] && window.mouse_buttons[button];
-}
-
-static bool key_pressed(uint32_t key) {
-  return !window.last_frame_keys[key] && window.keys[key];
-}
-
-static bool drag_delta(float* x, float* y, uint32_t button) {
-  static float _x[MOUSE_BUTTON_COUNT], _y[MOUSE_BUTTON_COUNT];
-  if (mouse_pressed(button)) {
-    _x[button] = window.mouse_x;
-    _y[button] = window.mouse_y;
-  }
-  if (window.mouse_buttons[button]) {
-    *x = window.mouse_x - _x[button];
-    *y = window.mouse_y - _y[button];
-    _x[button] = window.mouse_x;
-    _y[button] = window.mouse_y;
-    return true;
-  } else {
-    *x = *y = 0;
-    return false;
-  }
-}
-
-static bool map_editor(size_t ms) {
-  static bool undo;
-  static bool redo;
-  static bool save;
-  static bool closing;
-  static bool init;
-
-  if (!init && !init_map_editor()) {
-    return false;
-  }
-  init = true;
-
-  static float view_x, view_y, view_z = NEUTRAL_Z_DIST;
-  float drag_view_x, drag_view_y;
-  drag_delta(&drag_view_x, &drag_view_y, MOUSE_MIDDLE);
-  view_x += screen_to_z0(drag_view_x);
-  view_y += screen_to_z0(drag_view_y);
-  view_z += view_z * window.scroll_y_delta / 100;
-  set_view_coords(view_x, view_y, view_z);
-
-  const size_t MAX_POINTS = 100;
-  static float points[MAX_POINTS][2];
-  static float current_point[2];
-  static ptrdiff_t point_index = -1;
-  static ptrdiff_t redo_point_index = -1;
-
-  float x = window_to_entity(screen_x_to_z0(window.mouse_x));
-  float y = window_to_entity(screen_y_to_z0(window.mouse_y));
-
-  float grid_snap = screen_to_z0(window.keys[KEY_LCTRL] ? 10 : window.keys[KEY_LALT] ? 0.01 : 2);
-  float angle_snap = window.keys[KEY_LALT] ? M_PI/16 : M_PI/4;
-
-  x = round(x / grid_snap) * grid_snap;
-  y = round(y / grid_snap) * grid_snap;
-
-  if (!undo && (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && !window.keys[KEY_LSHIFT] && window.keys[KEY_Z]) {
-    if (point_index >= 0) {
-      point_index--;
-    } else if (MapEditor.polygon_index >= 0) {
-      disable_entity(MapEditor.polygons[MapEditor.polygon_index--]);
-    }
-    window.keys[KEY_Z] = false; // TODO: fix the macOS issue where keyUp is not reported while Meta is held
-  }
-  if (!redo && (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && window.keys[KEY_LSHIFT] && window.keys[KEY_Z]) {
-    if (MapEditor.polygon_index < MapEditor.redo_polygon_index) {
-      enable_entity(MapEditor.polygons[++MapEditor.polygon_index]);
-    } else if (point_index < redo_point_index) {
-      point_index++;
-    }
-    window.keys[KEY_Z] = false; // TODO: fix the macOS issue where keyUp is not reported while Meta is held
-  }
-  if (!save && (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && window.keys[KEY_S]) {
-    map_editor_save();
-    window.keys[KEY_S] = false; // TODO: fix the macOS issue where keyUp is not reported while Meta is held
-  }
-
-  if (key_pressed(KEY_ESC)) {
-    point_index = -1;
-  }
-
-  if (mouse_pressed(MOUSE_LEFT)) {
-    if (closing) {
-      point_index++;
-      points[point_index][0] = points[0][0];
-      points[point_index][1] = points[0][1];
-      Polygon poly = create_polygon(points, point_index);
-      if (validate_polygon(&poly)) {
-        Color color = { rand() / (float) RAND_MAX, rand() / (float) RAND_MAX, rand() / (float) RAND_MAX };
-        MapEditor.polygons[++MapEditor.polygon_index] = create_entity((Entity){ .poly = poly, .color = color });
-        attach_body(MapEditor.polygons[MapEditor.polygon_index], false);
-      } else {
-        free_polygon(&poly);
-      }
-      point_index = -1;
-      closing = false;
-    } else {
-      if (point_index < 0) {
-        points[0][0] = current_point[0] = x;
-        points[0][1] = current_point[1] = y;
-      }
-      float prev_x = points[point_index][0];
-      float prev_y = points[point_index][1];
-      float dx = x - prev_x;
-      float dy = y - prev_y;
-      float dist_xy = sqrt(dx*dx + dy*dy);
-      if (dist_xy > 1) {
-        point_index++;
-        points[point_index][0] = current_point[0];
-        points[point_index][1] = current_point[1];
-      }
-    }
-    redo_point_index = point_index;
-    MapEditor.redo_polygon_index = MapEditor.polygon_index;
-  }
-  if (point_index >= 0) {
-    if (window.keys[KEY_LSHIFT]) {
-      float prev_x = points[point_index][0];
-      float prev_y = points[point_index][1];
-      float dx = x - prev_x;
-      float dy = y - prev_y;
-      float angle = atan(dy/dx);
-      angle = round(angle / angle_snap) * angle_snap;
-      float dist_xy = sqrt(dx*dx + dy*dy);
-      float x_sign = dx < 0 ? -1 : 1;
-      float y_sign = dy < 0 ? -1 : 1;
-      dx = fabs(cos(angle)) * dist_xy * x_sign;
-      dy = fabs(sin(angle)) * dist_xy * y_sign;
-      x = dx + prev_x;
-      y = dy + prev_y;
-    }
-
-    float close_dist = screen_to_z0(5);
-    closing = point_index > 1 && !window.keys[KEY_LALT] && fabsf(x - points[0][0]) < close_dist && fabsf(y - points[0][1]) < close_dist;
-    if (closing) {
-      x = points[0][0];
-      y = points[0][1];
-    }
-    current_point[0] = x;
-    current_point[1] = y;
-  }
-
-  undo = (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && !window.keys[KEY_LSHIFT] && window.keys[KEY_Z];
-  redo = (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && window.keys[KEY_LSHIFT] && window.keys[KEY_Z];
-  save = (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && window.keys[KEY_S];
-
-  // render
-  begin_render();
-  render_entities();
-  if (point_index >= 0) {
-    for (ptrdiff_t i=0; i < point_index; i++) {
-      draw_line((LineData){
-        .x1 = entity_to_screen(points[i][0]),
-        .y1 = entity_to_screen(points[i][1]),
-        .x2 = entity_to_screen(points[i+1][0]),
-        .y2 = entity_to_screen(points[i+1][1]),
-        .w = screen_to_z0(entity_to_screen(1)),
-        .r = 1,
-      });
-    }
-    draw_line((LineData){
-      .x1 = entity_to_screen(points[point_index][0]),
-      .y1 = entity_to_screen(points[point_index][1]),
-      .x2 = entity_to_screen(current_point[0]),
-      .y2 = entity_to_screen(current_point[1]),
-      .w = screen_to_z0(entity_to_screen(1)),
-      .r = 1,
-    });
-  }
-  end_render();
-
-  return !window.closed;
-}
-
-bool tick(size_t ms) {
+bool host_tick(float ms) {
   if (window.keys[KEY_LMETA] && (window.keys[KEY_Q] || window.keys[KEY_W])) {
     window.closed = true;
   }
-  bool res = tick_routine(ms);
+  bool res = program.tick(ms);
   memcpy(window.last_frame_mouse_buttons, window.mouse_buttons, sizeof(window.mouse_buttons));
   memcpy(window.last_frame_keys, window.keys, sizeof(window.keys));
   window.scroll_x_delta = 0;

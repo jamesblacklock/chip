@@ -41,3 +41,29 @@ void window_closed() {
   printf("window closed\n");
   window.closed = true;
 }
+
+bool mouse_pressed(uint32_t button) {
+  return !window.last_frame_mouse_buttons[button] && window.mouse_buttons[button];
+}
+
+bool key_pressed(uint32_t key) {
+  return !window.last_frame_keys[key] && window.keys[key];
+}
+
+bool drag_delta(float* x, float* y, uint32_t button) {
+  static float _x[MOUSE_BUTTON_COUNT], _y[MOUSE_BUTTON_COUNT];
+  if (mouse_pressed(button)) {
+    _x[button] = window.mouse_x;
+    _y[button] = window.mouse_y;
+  }
+  if (window.mouse_buttons[button]) {
+    *x = window.mouse_x - _x[button];
+    *y = window.mouse_y - _y[button];
+    _x[button] = window.mouse_x;
+    _y[button] = window.mouse_y;
+    return true;
+  } else {
+    *x = *y = 0;
+    return false;
+  }
+}

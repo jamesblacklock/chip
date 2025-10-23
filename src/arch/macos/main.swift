@@ -2,7 +2,7 @@ import AppKit
 
 func initWrapper(_ appPath: String, _ vkInst: VkInstance, _ vkSurface: VkSurfaceKHR, _ width: UInt32, _ height: UInt32) -> Bool {
   return appPath.withCString { appPathCString in
-    return `init`(CommandLine.argc, CommandLine.unsafeArgv, appPathCString, vkInst, vkSurface, width, height)
+    return host_init(CommandLine.argc, CommandLine.unsafeArgv, appPathCString, vkInst, vkSurface, width, height)
   }
 }
 
@@ -304,7 +304,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     let currentTime = CFAbsoluteTimeGetCurrent()
     let deltaTime = currentTime - (lastFrameTime ?? currentTime) // Time since last frame (seconds)
     lastFrameTime = currentTime
-    if !tick(Int(deltaTime * 1000)) {
+    if !host_tick(Float(deltaTime * 1000)) {
       NSApp.terminate(self)
     }
   }
@@ -316,7 +316,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
   func applicationWillTerminate(_ aNotification: Notification) {
     timer?.invalidate()
-    cleanup();
+    host_cleanup();
     if let vkInst = vkInst, let vkSurface = vkSurface {
       vkDestroySurfaceKHR(vkInst, vkSurface, nil)
     }

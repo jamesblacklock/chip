@@ -1,6 +1,7 @@
 #ifndef GRAPHICS_H
 #define GRAPHICS_H
 
+#include <stdbool.h>
 #include <vulkan/vulkan.h>
 
 typedef struct QuadData {
