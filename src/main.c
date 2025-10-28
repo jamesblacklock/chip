@@ -117,61 +117,6 @@ void mouse_viewport() {
   set_view_coords(view_x, view_y, view_z);
 }
 
-// static void box_drop() {
-//   static bool m = false;
-//   static float drag_x;
-//   static float drag_y;
-//   static Entity* bloop = NULL;
-//   if (!m && window.mouse_buttons[MOUSE_LEFT]) {
-//     drag_x = window.mouse_x;
-//     drag_y = window.mouse_y;
-//     m = true;
-//     float r = rand() / (float) RAND_MAX;
-//     float g = rand() / (float) RAND_MAX;
-//     float b = rand() / (float) RAND_MAX;
-//     float x = window_to_entity(drag_x);
-//     float y = window_to_entity(drag_y);
-//     bloop = create_entity((Entity){ .w = 1, .h = 1, .x = x, .y = y, .color = {r,g,b} });
-//   }
-//   if (m && window.mouse_buttons[MOUSE_LEFT] && bloop) {
-//     float x1 = window_to_entity(fmin(window.mouse_x, drag_x));
-//     float x2 = window_to_entity(fmax(window.mouse_x, drag_x));
-//     float y1 = window_to_entity(fmin(window.mouse_y, drag_y));
-//     float y2 = window_to_entity(fmax(window.mouse_y, drag_y));
-//     bloop->w = x2 - x1;
-//     bloop->x = x1 + bloop->w/2;
-//     bloop->h = y2 - y1;
-//     bloop->y = y1 + bloop->h/2;
-//   }
-//   if (!window.mouse_buttons[MOUSE_LEFT] && bloop) {
-//     attach_body(bloop, window.keys[KEY_LSHIFT]);
-//     bloop = NULL;
-//   }
-//   m = window.mouse_buttons[MOUSE_LEFT];
-
-//   b2World_Step(world, 1.0/60.0, 10);
-//   update_entities();
-// }
-
-// static void box_spawn() {
-//   static bool m = false;
-//   static float drag_x;
-//   static float drag_y;
-//   if (!m && window.mouse_buttons[MOUSE_RIGHT]) {
-//     drag_x = window.mouse_x;
-//     drag_y = window.mouse_y;
-//     m = true;
-//     float r = rand() / (float) RAND_MAX;
-//     float g = rand() / (float) RAND_MAX;
-//     float b = rand() / (float) RAND_MAX;
-//     float x = window_to_entity(window.mouse_x);
-//     float y = window_to_entity(window.mouse_y);
-//     Entity* entity = create_entity((Entity){ .w = 10, .h = 10, .x = x, .y = y, .color = {r,g,b} });
-//     attach_body(entity, true);
-//   }
-//   m = window.mouse_buttons[MOUSE_RIGHT];
-// }
-
 // typedef struct EntityUpdateData {
 //   Entity* bloop;
 //   size_t ms;
@@ -321,6 +266,13 @@ typedef struct Foot {
   float x2;
 } Foot;
 
+typedef struct Floor {
+  Entity* entity;
+  uint32_t edge;
+  float x;
+  bool state;
+} Floor;
+
 typedef struct Robot {
   float x;
   // float y;
@@ -333,7 +285,7 @@ typedef struct Robot {
   float floor_y;
   float floor_angle;
   float target_floor_angle;
-  bool floor;
+  Floor floor;
   bool collided;
 } Robot;
 
@@ -400,32 +352,38 @@ bool snap_foot_to_surface(Robot* robot, Entity* target, size_t target_edge) {
   float ty = ty2-ty1;
   float slope = ty/tx;
   float intercept = ty1 - slope * tx1;
-  float subject_y = (robot->x) * slope + intercept;
 
-  float foot_x1 = robot->x + cos(robot->floor_angle) * robot->foot.x1;
-  float foot_x2 = robot->x + cos(robot->floor_angle) * robot->foot.x2;
+  float robot_x = robot->x;
+  if (robot->floor.state && robot->floor.entity == target && robot->floor.edge == target_edge) {
+    robot_x = tx1 + robot->floor.x + robot->vx;
+  }
 
-  if (robot->floor_y < subject_y + 3 && robot->x + robot->foot.x2 >= tx1 && robot->x + robot->foot.x1 < tx2) {
+  float subject_y = robot_x * slope + intercept;
+
+  float foot_x1 = robot_x + cos(robot->floor_angle) * robot->foot.x1;
+  float foot_x2 = robot_x + cos(robot->floor_angle) * robot->foot.x2;
+
+  if (robot_x + robot->foot.x2 >= tx1 && robot_x + robot->foot.x1 < tx2) {
     robot->floor_y = subject_y;
     robot->target_floor_angle = atan(slope);
+    robot->floor.state = true;
+    robot->floor.entity = target;
+    robot->floor.edge = target_edge;
+    robot->floor.x = robot_x - tx1;
+    robot->x = robot_x;
     return true;
+  }
+  if (robot->floor.state && robot->floor.entity == target && robot->floor.edge == target_edge) {
+    robot->floor.state = false;
   }
   return false;
 }
 
 void update_robot(Robot* robot, float ms) {
-  if (robot->floor) {
-    robot->vy = 0;
-  } else {
-    float gravity = ms * 4;
-    if (robot->vy < gravity) {
-      robot->vy = fmin(gravity, robot->vy + ms / 80);
-    }
-  }
   if (g.robot.floor_angle < g.robot.target_floor_angle) {
-    g.robot.floor_angle = fmin(g.robot.floor_angle + 0.4, g.robot.target_floor_angle);
+    g.robot.floor_angle = fmin(g.robot.floor_angle + 0.006 * ms, g.robot.target_floor_angle);
   } else if (g.robot.floor_angle > g.robot.target_floor_angle) {
-    g.robot.floor_angle = fmax(g.robot.floor_angle - 0.4, g.robot.target_floor_angle);
+    g.robot.floor_angle = fmax(g.robot.floor_angle - 0.006 * ms, g.robot.target_floor_angle);
   }
   robot->floor_y += robot->vy;
   robot->x += robot->vx;
@@ -458,10 +416,14 @@ bool collides(Robot* robot, Entity* entity, float ms) {
       }
       fac = floor + (ceiling - floor)/2;
     }
+    if (fabs(vx) <= 0.01) {
+      vx = 0;
+    }
+    if (fabs(vy) <= 0.01) {
+      vy = 0;
+    }
     robot->vx = vx;
     robot->vy = vy;
-    robot->x += vx;
-    robot->floor_y += vy;
     robot->collided = true;
     return true;
   }
@@ -475,10 +437,22 @@ bool z(float n) {
 bool test_tick(float ms) {
   mouse_viewport();
 
+  static Entity* selected_entity;
+  if (window.mouse_buttons[MOUSE_LEFT] && !selected_entity) {
+    Vec2 p = {screen_to_entity(screen_x_to_z0(window.mouse_x)), screen_to_entity(screen_y_to_z0(window.mouse_y))};
+    if (polygon_contains_point(&g.e2->poly, p).intersects) {
+      selected_entity = g.e2;
+    } else if (polygon_contains_point(&g.e1->poly, p).intersects) {
+      selected_entity = g.e1;
+    }
+  } else if (!window.mouse_buttons[MOUSE_LEFT]) {
+    selected_entity = NULL;
+  }
+
   float x, y;
-  if (drag_delta(&x, &y, MOUSE_LEFT)) {
-    g.robot.x += screen_to_entity(screen_to_z0(x));
-    g.robot.floor_y += screen_to_entity(screen_to_z0(y));
+  if (selected_entity && drag_delta(&x, &y, MOUSE_LEFT)) {
+    selected_entity->poly.ox += screen_to_entity(screen_to_z0(x));
+    selected_entity->poly.oy += screen_to_entity(screen_to_z0(y));
   }
 
   static float q = true;
@@ -487,27 +461,20 @@ bool test_tick(float ms) {
   }
   if (key_pressed(KEY_Z)) {
     g.robot.x = -100;
+    g.robot.vx = 0;
+    g.robot.vy = 0;
     g.robot.floor_y = -100;
-    g.robot.floor = false;
+    g.robot.floor.state = false;
   }
   if (q || key_pressed_repeating(KEY_A)) {
-    if (g.robot.floor && key_pressed(KEY_SPACE)) {
-      g.robot.vy = -5;
-      g.robot.floor = false;
+    if (g.robot.floor.state) {
+      g.robot.vy = 0;
     } else {
-      if (!g.robot.floor) {
-        g.robot.target_floor_angle = 0;
-        g.robot.collided = collides(&g.robot, g.e2, ms) || collides(&g.robot, g.e1, ms);
-        g.robot.collided && printf("collided!\n");
-      }
-      if (g.robot.collided || (g.robot.floor && (!z(g.robot.vx) || !z(g.robot.vy)))) {
-        g.robot.vy = 0;
-        g.robot.floor = snap_foot_to_surface(&g.robot, g.e2, 0) || snap_foot_to_surface(&g.robot, g.e1, 0);
-        g.robot.collided = g.robot.collided && !g.robot.floor;
-        g.robot.floor && printf("snapping to floor\n");
+      float gravity = ms * 4;
+      if (g.robot.vy < gravity) {
+        g.robot.vy = fmin(gravity, g.robot.vy + ms / 80);
       }
     }
-
     float dir = window.keys[KEY_RIGHT] - (float) window.keys[KEY_LEFT];
     if (z(dir)) {
       g.robot.vx *= 0.75;
@@ -515,6 +482,22 @@ bool test_tick(float ms) {
       float target = ms * 0.08;
       if (g.robot.vx * dir < target) {
         g.robot.vx = fmin(target, g.robot.vx * dir + ms / 60) * dir;
+      }
+    }
+    if (g.robot.floor.state && key_pressed(KEY_SPACE)) {
+      g.robot.vy = -5;
+      g.robot.floor.state = false;
+    } else {
+      if (!g.robot.floor.state) {
+        g.robot.target_floor_angle = 0;
+        g.robot.collided = collides(&g.robot, g.e2, ms) || collides(&g.robot, g.e1, ms);
+        g.robot.collided && printf("collided!\n");
+      }
+      if (g.robot.collided || g.robot.floor.state) {
+        g.robot.vy = 0;
+        snap_foot_to_surface(&g.robot, g.e2, 0) || /*snap_foot_to_surface(&g.robot, g.e2, 1) || */snap_foot_to_surface(&g.robot, g.e1, 0);
+        g.robot.collided = g.robot.collided && !g.robot.floor.state;
+        g.robot.floor.state && printf("snapping to floor\n");
       }
     }
     update_robot(&g.robot, ms);
