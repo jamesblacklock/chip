@@ -16,6 +16,8 @@
 static char* app_path;
 static Program program;
 
+static Program program_test;
+
 ExeArgs process_argv(int argc, char** argv) {
   ExeArgs args = { .valid = false };
   if (argc < 2) {
@@ -34,6 +36,9 @@ ExeArgs process_argv(int argc, char** argv) {
     }
     program = program_play;
     args.play.mapfile = argv[2];
+    args.valid = true;
+  } else if (strcmp(argv[1], "test") == 0) {
+    program = program_test;
     args.valid = true;
   } else {
     printf("invalid parameters; valid program selections include:\n- mapeditor\n- play\n");
@@ -102,133 +107,143 @@ void host_cleanup() {
   cleanup_vulkan();
 }
 
-static void box_drop() {
-  static bool m = false;
-  static float drag_x;
-  static float drag_y;
-  static Entity* bloop = NULL;
-  if (!m && window.mouse_buttons[MOUSE_LEFT]) {
-    drag_x = window.mouse_x;
-    drag_y = window.mouse_y;
-    m = true;
-    float r = rand() / (float) RAND_MAX;
-    float g = rand() / (float) RAND_MAX;
-    float b = rand() / (float) RAND_MAX;
-    float x = window_to_entity(drag_x);
-    float y = window_to_entity(drag_y);
-    bloop = create_entity((Entity){ .w = 1, .h = 1, .x = x, .y = y, .color = {r,g,b} });
-  }
-  if (m && window.mouse_buttons[MOUSE_LEFT] && bloop) {
-    float x1 = window_to_entity(fmin(window.mouse_x, drag_x));
-    float x2 = window_to_entity(fmax(window.mouse_x, drag_x));
-    float y1 = window_to_entity(fmin(window.mouse_y, drag_y));
-    float y2 = window_to_entity(fmax(window.mouse_y, drag_y));
-    bloop->w = x2 - x1;
-    bloop->x = x1 + bloop->w/2;
-    bloop->h = y2 - y1;
-    bloop->y = y1 + bloop->h/2;
-  }
-  if (!window.mouse_buttons[MOUSE_LEFT] && bloop) {
-    attach_body(bloop, window.keys[KEY_LSHIFT]);
-    bloop = NULL;
-  }
-  m = window.mouse_buttons[MOUSE_LEFT];
-
-  b2World_Step(world, 1.0/60.0, 10);
-  update_entities();
+void mouse_viewport() {
+  static float view_x, view_y, view_z = NEUTRAL_Z_DIST;
+  float drag_view_x, drag_view_y;
+  drag_delta(&drag_view_x, &drag_view_y, MOUSE_MIDDLE);
+  view_x -= screen_to_z0(drag_view_x);
+  view_y -= screen_to_z0(drag_view_y);
+  view_z += view_z * window.scroll_y_delta / 100;
+  set_view_coords(view_x, view_y, view_z);
 }
 
-static void box_spawn() {
-  static bool m = false;
-  static float drag_x;
-  static float drag_y;
-  if (!m && window.mouse_buttons[MOUSE_RIGHT]) {
-    drag_x = window.mouse_x;
-    drag_y = window.mouse_y;
-    m = true;
-    float r = rand() / (float) RAND_MAX;
-    float g = rand() / (float) RAND_MAX;
-    float b = rand() / (float) RAND_MAX;
-    float x = window_to_entity(window.mouse_x);
-    float y = window_to_entity(window.mouse_y);
-    Entity* entity = create_entity((Entity){ .w = 10, .h = 10, .x = x, .y = y, .color = {r,g,b} });
-    attach_body(entity, true);
-  }
-  m = window.mouse_buttons[MOUSE_RIGHT];
-}
+// static void box_drop() {
+//   static bool m = false;
+//   static float drag_x;
+//   static float drag_y;
+//   static Entity* bloop = NULL;
+//   if (!m && window.mouse_buttons[MOUSE_LEFT]) {
+//     drag_x = window.mouse_x;
+//     drag_y = window.mouse_y;
+//     m = true;
+//     float r = rand() / (float) RAND_MAX;
+//     float g = rand() / (float) RAND_MAX;
+//     float b = rand() / (float) RAND_MAX;
+//     float x = window_to_entity(drag_x);
+//     float y = window_to_entity(drag_y);
+//     bloop = create_entity((Entity){ .w = 1, .h = 1, .x = x, .y = y, .color = {r,g,b} });
+//   }
+//   if (m && window.mouse_buttons[MOUSE_LEFT] && bloop) {
+//     float x1 = window_to_entity(fmin(window.mouse_x, drag_x));
+//     float x2 = window_to_entity(fmax(window.mouse_x, drag_x));
+//     float y1 = window_to_entity(fmin(window.mouse_y, drag_y));
+//     float y2 = window_to_entity(fmax(window.mouse_y, drag_y));
+//     bloop->w = x2 - x1;
+//     bloop->x = x1 + bloop->w/2;
+//     bloop->h = y2 - y1;
+//     bloop->y = y1 + bloop->h/2;
+//   }
+//   if (!window.mouse_buttons[MOUSE_LEFT] && bloop) {
+//     attach_body(bloop, window.keys[KEY_LSHIFT]);
+//     bloop = NULL;
+//   }
+//   m = window.mouse_buttons[MOUSE_LEFT];
 
-typedef struct EntityUpdateData {
-  Entity* bloop;
-  size_t ms;
-} EntityUpdateData;
+//   b2World_Step(world, 1.0/60.0, 10);
+//   update_entities();
+// }
 
-static void box_screensaver_update_entity(Entity* entity, void* _data) {
-  EntityUpdateData* data = _data;
-  if (entity == data->bloop) {
-    return;
-  }
-  if (fabsf(entity->velocity.x) < 0.001) {
-    entity->velocity.x = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-    entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
-  }
-  if (fabsf(entity->velocity.y) < 0.001) {
-    entity->velocity.y = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
-    entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
-  }
-  if (entity->velocity.x > 0 && entity_to_screen(entity->x) > window.width/2) {
-    entity->velocity.x = -entity->velocity.x;
-    entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
-  }
-  if (entity->velocity.x < 0 && entity_to_screen(-entity->x) > window.width/2) {
-    entity->velocity.x = -entity->velocity.x;
-    entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
-  }
-  if (entity->velocity.y > 0 && entity_to_screen(entity->y) > window.height/2) {
-    entity->velocity.y = -entity->velocity.y;
-    entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
-  }
-  if (entity->velocity.y < 0 && entity_to_screen(-entity->y) > window.height/2) {
-    entity->velocity.y = -entity->velocity.y;
-    entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
-  }
-  entity->x += entity->velocity.x * data->ms;
-  entity->y += entity->velocity.y * data->ms;
-  entity->angle += entity->velocity.a * data->ms;
-}
+// static void box_spawn() {
+//   static bool m = false;
+//   static float drag_x;
+//   static float drag_y;
+//   if (!m && window.mouse_buttons[MOUSE_RIGHT]) {
+//     drag_x = window.mouse_x;
+//     drag_y = window.mouse_y;
+//     m = true;
+//     float r = rand() / (float) RAND_MAX;
+//     float g = rand() / (float) RAND_MAX;
+//     float b = rand() / (float) RAND_MAX;
+//     float x = window_to_entity(window.mouse_x);
+//     float y = window_to_entity(window.mouse_y);
+//     Entity* entity = create_entity((Entity){ .w = 10, .h = 10, .x = x, .y = y, .color = {r,g,b} });
+//     attach_body(entity, true);
+//   }
+//   m = window.mouse_buttons[MOUSE_RIGHT];
+// }
 
-static void box_screensaver(size_t ms) {
-  static bool m = false;
-  static float drag_x;
-  static float drag_y;
-  static Entity* bloop = NULL;
-  if (!m && window.mouse_buttons[MOUSE_LEFT]) {
-    drag_x = window.mouse_x;
-    drag_y = window.mouse_y;
-    m = true;
-    float r = rand() / (float) RAND_MAX;
-    float g = rand() / (float) RAND_MAX;
-    float b = rand() / (float) RAND_MAX;
-    float x = window_to_entity(drag_x);
-    float y = window_to_entity(drag_y);
-    bloop = create_entity((Entity){ .w = 1, .h = 1, .x = x, .y = y, .color = {r,g,b} });
-  }
-  if (m && window.mouse_buttons[MOUSE_LEFT] && bloop) {
-    float x1 = window_to_entity(fmin(window.mouse_x, drag_x));
-    float x2 = window_to_entity(fmax(window.mouse_x, drag_x));
-    float y1 = window_to_entity(fmin(window.mouse_y, drag_y));
-    float y2 = window_to_entity(fmax(window.mouse_y, drag_y));
-    bloop->w = x2 - x1;
-    bloop->x = x1 + bloop->w/2;
-    bloop->h = y2 - y1;
-    bloop->y = y1 + bloop->h/2;
-  }
-  if (!window.mouse_buttons[MOUSE_LEFT] && bloop) {
-    bloop = NULL;
-  }
-  m = window.mouse_buttons[MOUSE_LEFT];
+// typedef struct EntityUpdateData {
+//   Entity* bloop;
+//   size_t ms;
+// } EntityUpdateData;
+
+// static void box_screensaver_update_entity(Entity* entity, void* _data) {
+//   EntityUpdateData* data = _data;
+//   if (entity == data->bloop) {
+//     return;
+//   }
+//   if (fabsf(entity->velocity.x) < 0.001) {
+//     entity->velocity.x = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+//     entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
+//   }
+//   if (fabsf(entity->velocity.y) < 0.001) {
+//     entity->velocity.y = (rand() % 10) / 50.0 * (rand() % 2 ? 1 : -1);
+//     entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
+//   }
+//   if (entity->velocity.x > 0 && entity_to_screen(entity->x) > window.width/2) {
+//     entity->velocity.x = -entity->velocity.x;
+//     entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
+//   }
+//   if (entity->velocity.x < 0 && entity_to_screen(-entity->x) > window.width/2) {
+//     entity->velocity.x = -entity->velocity.x;
+//     entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
+//   }
+//   if (entity->velocity.y > 0 && entity_to_screen(entity->y) > window.height/2) {
+//     entity->velocity.y = -entity->velocity.y;
+//     entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
+//   }
+//   if (entity->velocity.y < 0 && entity_to_screen(-entity->y) > window.height/2) {
+//     entity->velocity.y = -entity->velocity.y;
+//     entity->velocity.a = (rand() % 10) / 3000.0 * (rand() % 2 ? 1 : -1);
+//   }
+//   entity->x += entity->velocity.x * data->ms;
+//   entity->y += entity->velocity.y * data->ms;
+//   entity->angle += entity->velocity.a * data->ms;
+// }
+
+// static void box_screensaver(size_t ms) {
+//   static bool m = false;
+//   static float drag_x;
+//   static float drag_y;
+//   static Entity* bloop = NULL;
+//   if (!m && window.mouse_buttons[MOUSE_LEFT]) {
+//     drag_x = window.mouse_x;
+//     drag_y = window.mouse_y;
+//     m = true;
+//     float r = rand() / (float) RAND_MAX;
+//     float g = rand() / (float) RAND_MAX;
+//     float b = rand() / (float) RAND_MAX;
+//     float x = window_to_entity(drag_x);
+//     float y = window_to_entity(drag_y);
+//     bloop = create_entity((Entity){ .w = 1, .h = 1, .x = x, .y = y, .color = {r,g,b} });
+//   }
+//   if (m && window.mouse_buttons[MOUSE_LEFT] && bloop) {
+//     float x1 = window_to_entity(fmin(window.mouse_x, drag_x));
+//     float x2 = window_to_entity(fmax(window.mouse_x, drag_x));
+//     float y1 = window_to_entity(fmin(window.mouse_y, drag_y));
+//     float y2 = window_to_entity(fmax(window.mouse_y, drag_y));
+//     bloop->w = x2 - x1;
+//     bloop->x = x1 + bloop->w/2;
+//     bloop->h = y2 - y1;
+//     bloop->y = y1 + bloop->h/2;
+//   }
+//   if (!window.mouse_buttons[MOUSE_LEFT] && bloop) {
+//     bloop = NULL;
+//   }
+//   m = window.mouse_buttons[MOUSE_LEFT];
   
-  visit_entities(box_screensaver_update_entity, &(EntityUpdateData){ .bloop = bloop, .ms = ms });
-}
+//   visit_entities(box_screensaver_update_entity, &(EntityUpdateData){ .bloop = bloop, .ms = ms });
+// }
 
 SerializableObject* read_object(FILE* fp) {
   int16_t type;
@@ -242,8 +257,8 @@ SerializableObject* read_object(FILE* fp) {
         return NULL;
       }
       Polygon* polygon = malloc(sizeof(Polygon));
-      Point* points = malloc(sizeof(Point) * point_count);
-      fread(points, sizeof(Point), point_count, fp);
+      float* points = malloc(sizeof(float) * point_count * 2);
+      fread(points, sizeof(float) * 2, point_count, fp);
       *polygon = create_polygon((void*)points, point_count);
       free(points);
       printf("read polygon with %u points\n", point_count);
@@ -274,7 +289,7 @@ void write_object(void* object, FILE* fp) {
       Polygon* poly = (Polygon*) object;
       uint16_t point_count = poly->count;
       fwrite(&point_count, sizeof(uint16_t), 1, fp);
-      fwrite(poly->points, sizeof(Point), point_count, fp);
+      fwrite(poly->points, sizeof(Vec2), point_count, fp);
       printf("wrote polygon with %u points\n", point_count);
       return;
     }
@@ -295,8 +310,224 @@ bool host_tick(float ms) {
   }
   bool res = program.tick(ms);
   memcpy(window.last_frame_mouse_buttons, window.mouse_buttons, sizeof(window.mouse_buttons));
-  memcpy(window.last_frame_keys, window.keys, sizeof(window.keys));
+  memcpy(window.last_frame_keys, window.keys_repeating, sizeof(window.keys_repeating));
   window.scroll_x_delta = 0;
   window.scroll_y_delta = 0;
   return res;
 }
+
+typedef struct Foot {
+  float x1;
+  float x2;
+} Foot;
+
+typedef struct Robot {
+  float x;
+  // float y;
+  float vx;
+  float vy;
+  // float w;
+  float h;
+  // float angle;
+  Foot foot;
+  float floor_y;
+  float floor_angle;
+  float target_floor_angle;
+  bool floor;
+  bool collided;
+} Robot;
+
+struct {
+  Entity* e1;
+  Entity* e2;
+  Robot robot;
+} g;
+
+bool test_init(ExeArgs args) {
+  float points1[][2] = {
+    {0, -50}, {80, -80},
+    {80, 80}, {20, 50}, 
+  };
+  g.e1 = create_entity((Entity){
+    .poly = create_polygon(points1, 4),
+    .color = {1,0,0},
+  });
+  g.robot = (Robot){
+    // .w = 36,
+    .h = 60,
+    .x = -100,
+    .floor_y = -100,
+    .foot = {.x1 = -14, .x2 = 18},
+  };
+  float points2[][2] = {
+    {-160, -40}, {-60, -55},
+    {-50, 60}, {-150, 65},
+  };
+  g.e2 = create_entity((Entity){
+    .poly = create_polygon(points2, 4),
+    .color = {0,1,0},
+    .dynamic = true,
+  });
+  // load_map_file("map1.map");
+  return true;
+}
+
+void render_robot(Robot* robot) {
+  draw_line((LineData){
+    .w = entity_to_screen(1),
+    .x1 = entity_to_screen(robot->x + cos(robot->floor_angle) * robot->foot.x1),
+    .y1 = entity_to_screen(robot->floor_y + sin(robot->floor_angle) * robot->foot.x1),
+    .x2 = entity_to_screen(robot->x + cos(robot->floor_angle) * robot->foot.x2),
+    .y2 = entity_to_screen(robot->floor_y + sin(robot->floor_angle) * robot->foot.x2),
+    .r = 1, .g = 1,
+  });
+  draw_line((LineData){
+    .w = entity_to_screen(1),
+    .x1 = entity_to_screen(robot->x),
+    .y1 = entity_to_screen(robot->floor_y),
+    .x2 = entity_to_screen(robot->x),
+    .y2 = entity_to_screen(robot->floor_y - robot->h),
+    .r = 1, .g = 1,
+  });
+}
+
+bool snap_foot_to_surface(Robot* robot, Entity* target, size_t target_edge) {
+  float tx1 = target->poly.points[target_edge].x + target->poly.ox;
+  float ty1 = target->poly.points[target_edge].y + target->poly.oy;
+  float tx2 = target->poly.points[(target_edge + 1) % target->poly.count].x + target->poly.ox;
+  float ty2 = target->poly.points[(target_edge + 1) % target->poly.count].y + target->poly.oy;
+  float tx = tx2-tx1;
+  float ty = ty2-ty1;
+  float slope = ty/tx;
+  float intercept = ty1 - slope * tx1;
+  float subject_y = (robot->x) * slope + intercept;
+
+  float foot_x1 = robot->x + cos(robot->floor_angle) * robot->foot.x1;
+  float foot_x2 = robot->x + cos(robot->floor_angle) * robot->foot.x2;
+
+  if (robot->floor_y < subject_y + 3 && robot->x + robot->foot.x2 >= tx1 && robot->x + robot->foot.x1 < tx2) {
+    robot->floor_y = subject_y;
+    robot->target_floor_angle = atan(slope);
+    return true;
+  }
+  return false;
+}
+
+void update_robot(Robot* robot, float ms) {
+  if (robot->floor) {
+    robot->vy = 0;
+  } else {
+    float gravity = ms * 4;
+    if (robot->vy < gravity) {
+      robot->vy = fmin(gravity, robot->vy + ms / 80);
+    }
+  }
+  if (g.robot.floor_angle < g.robot.target_floor_angle) {
+    g.robot.floor_angle = fmin(g.robot.floor_angle + 0.4, g.robot.target_floor_angle);
+  } else if (g.robot.floor_angle > g.robot.target_floor_angle) {
+    g.robot.floor_angle = fmax(g.robot.floor_angle - 0.4, g.robot.target_floor_angle);
+  }
+  robot->floor_y += robot->vy;
+  robot->x += robot->vx;
+}
+
+bool collides(Robot* robot, Entity* entity, float ms) {
+  Polygon* entity_poly = &entity->poly;
+  PolygonIntersection m = polygon_contains_point(entity_poly, (Vec2){robot->x + robot->foot.x1 + robot->vx, robot->floor_y + robot->vy});
+  if (!m.intersects) {
+    m = polygon_contains_point(entity_poly, (Vec2){robot->x + robot->foot.x2 + robot->vx, robot->floor_y + robot->vy});
+  }
+
+  if (m.intersects) {
+    float ceiling = 1;
+    float floor = 0;
+    float fac = 0.5;
+    float vx = robot->vx;
+    float vy = robot->vy;
+    while (ceiling - floor > 0.01) {
+      vx = robot->vx * fac;
+      vy = robot->vy * fac;
+      m = polygon_contains_point(entity_poly, (Vec2){robot->x + robot->foot.x1 + robot->vx, robot->floor_y + robot->vy});
+      if (!m.intersects) {
+        m = polygon_contains_point(entity_poly, (Vec2){robot->x + robot->foot.x2 + robot->vx, robot->floor_y + robot->vy});
+      }
+      if (!m.intersects) {
+        floor = fac;
+      } else {
+        ceiling = fac;
+      }
+      fac = floor + (ceiling - floor)/2;
+    }
+    robot->vx = vx;
+    robot->vy = vy;
+    robot->x += vx;
+    robot->floor_y += vy;
+    robot->collided = true;
+    return true;
+  }
+  return false;
+}
+
+bool z(float n) {
+  return n < 0.0001 && n > -0.0001;
+}
+
+bool test_tick(float ms) {
+  mouse_viewport();
+
+  float x, y;
+  if (drag_delta(&x, &y, MOUSE_LEFT)) {
+    g.robot.x += screen_to_entity(screen_to_z0(x));
+    g.robot.floor_y += screen_to_entity(screen_to_z0(y));
+  }
+
+  static float q = true;
+  if (key_pressed(KEY_Q)) {
+    q = !q;
+  }
+  if (key_pressed(KEY_Z)) {
+    g.robot.x = -100;
+    g.robot.floor_y = -100;
+    g.robot.floor = false;
+  }
+  if (q || key_pressed_repeating(KEY_A)) {
+    if (g.robot.floor && key_pressed(KEY_SPACE)) {
+      g.robot.vy = -5;
+      g.robot.floor = false;
+    } else {
+      if (!g.robot.floor) {
+        g.robot.target_floor_angle = 0;
+        g.robot.collided = collides(&g.robot, g.e2, ms) || collides(&g.robot, g.e1, ms);
+        g.robot.collided && printf("collided!\n");
+      }
+      if (g.robot.collided || (g.robot.floor && (!z(g.robot.vx) || !z(g.robot.vy)))) {
+        g.robot.vy = 0;
+        g.robot.floor = snap_foot_to_surface(&g.robot, g.e2, 0) || snap_foot_to_surface(&g.robot, g.e1, 0);
+        g.robot.collided = g.robot.collided && !g.robot.floor;
+        g.robot.floor && printf("snapping to floor\n");
+      }
+    }
+
+    float dir = window.keys[KEY_RIGHT] - (float) window.keys[KEY_LEFT];
+    if (z(dir)) {
+      g.robot.vx *= 0.75;
+    } else {
+      float target = ms * 0.08;
+      if (g.robot.vx * dir < target) {
+        g.robot.vx = fmin(target, g.robot.vx * dir + ms / 60) * dir;
+      }
+    }
+    update_robot(&g.robot, ms);
+  }
+
+  begin_render();
+  render_entities();
+  render_robot(&g.robot);
+  end_render();
+  return !window.closed;
+}
+
+static Program program_test = {
+  .init = test_init,
+  .tick = test_tick,
+};

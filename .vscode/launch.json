@@ -5,17 +5,24 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Python Debugger: Current File",
+      "type": "debugpy",
+      "request": "launch",
+      "program": "${file}",
+      "args": ["build"],
+      "console": "integratedTerminal"
+    },
+    {
       "name": "(lldb) Launch",
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/macos/Game.app/Contents/MacOS/game",
-      "args": ["mapeditor", "map1.map"],
+      "args": ["test", "map1.map"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "environment": [],
       "externalConsole": false,
       "MIMode": "lldb"
     }
-
   ]
 }

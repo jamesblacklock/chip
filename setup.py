@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from typing import List
+from typing import Optional, List
 import urllib.request
 import subprocess
 import zipfile
@@ -24,16 +24,17 @@ def cc(*cmd: List[str], src: str, build: str):
   for f in cpp_file_paths:
     c_file = str(f)
     o_file = Path(build) / f.with_suffix(".o").name
-    exec(*cmd, "-std=c++11", "-c", c_file, "-o", o_file)
+    exec(*cmd, "-std=c++17", "-c", c_file, "-o", o_file)
 
-def build_repo(repo: str, include="include"):
+def build_repo(repo: str, src="src", include="include"):
   name = Path(repo).stem
   if not (Path(f"./deps/macos/include/{name}").is_dir() and Path(f"./deps/macos/lib/lib{name}.a").is_file()):
     if not Path(f"./deps/macos/src/{name}").is_dir():
       exec("git", "clone", "--no-checkout", "--depth=1", "--filter=tree:0", repo, cwd="./deps/macos/src")
-      exec("git", "sparse-checkout", "set", "--no-cone", f"/{include}", "/src", cwd=f"./deps/macos/src/{name}")
+      exec("git", "sparse-checkout", "set", "--no-cone", f"/{include}", f"/{src}", cwd=f"./deps/macos/src/{name}")
       exec("git", "checkout", cwd=f"./deps/macos/src/{name}")
-      cc("clang", "-fPIC", "-ffast-math", "-O2", f"-I./deps/macos/src/{name}/{include}", src=f"./deps/macos/src/{name}/src", build=f"./deps/macos/src/{name}/build")
+    if not Path(f"./deps/macos/src/{name}/build").is_dir():
+      cc("clang", "-Wno-everything", "-fPIC", "-ffast-math", "-O2", f"-I./deps/macos/src/{name}/{include}", src=f"./deps/macos/src/{name}/{src}", build=f"./deps/macos/src/{name}/build")
       o_files = [str(x.relative_to(f"./deps/macos/src/{name}/build")) for x in Path(f"./deps/macos/src/{name}/build").rglob("*.o")]
       exec("ar", "rcs", f"lib{name}.a", *o_files, cwd=f"./deps/macos/src/{name}/build")
     if not Path(f"./deps/macos/include/{name}").is_dir():
@@ -52,7 +53,7 @@ except:
 def arg(arg: str):
   return arg in setup_args
 
-def exec(*cmd: List[str], cwd: str | None = None):
+def exec(*cmd: List[str], cwd: Optional[str] = None):
   res = subprocess.run(cmd, stderr=subprocess.STDOUT, cwd=cwd)
   if res.returncode != 0:
     exit(1)
@@ -125,6 +126,12 @@ if build:
   # polypartition
   build_repo("https://github.com/ivanfratric/polypartition.git", include="src")
 
+  # SP2C
+  build_repo("https://github.com/jamesblacklock/SP2C.git", src="src/SP2C")
+
+  # Clipper2
+  build_repo("https://github.com/AngusJohnson/Clipper2.git", include="CPP/Clipper2Lib/include", src="CPP/Clipper2Lib")
+
   cc("clang", "-g", "-O0", "-c", "-I./deps/macos/include", src="./src", build="./build/macos")
   o_files = [str(x) for x in Path("./build/macos").rglob("*.o")]
   exec(
@@ -136,6 +143,8 @@ if build:
     *o_files,
     "./deps/macos/lib/libMoltenVK.dylib",
     "-lbox2d",
+    "-lSP2C",
+    "-lClipper2",
     "-lpolypartition",
     "-lc++",
     "-o", "./build/macos/game",

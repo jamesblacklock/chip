@@ -76,7 +76,7 @@
 #define MOUSE_MIDDLE 2
 #define MOUSE_BUTTON_COUNT 3
 
-void set_key_state(size_t key, bool state);
+void set_key_state(size_t key, bool state, bool repeat);
 void set_mouse_state(float x, float y, bool l, bool r, bool m);
 void set_scroll_state(float x, float y);
 void init_window(uint32_t width, uint32_t height);
@@ -84,12 +84,14 @@ void window_closed();
 void window_resized(uint32_t width, uint32_t height);
 bool mouse_pressed(uint32_t button);
 bool key_pressed(uint32_t key);
+bool key_pressed_repeating(uint32_t key);
 bool drag_delta(float* x, float* y, uint32_t button);
 
 typedef struct Window {
   bool keys[KEY_COUNT];
+  uint32_t keys_repeating[KEY_COUNT];
+  uint32_t last_frame_keys[KEY_COUNT];
   bool mouse_buttons[MOUSE_BUTTON_COUNT];
-  bool last_frame_keys[KEY_COUNT];
   bool last_frame_mouse_buttons[MOUSE_BUTTON_COUNT];
   float mouse_x;
   float mouse_y;

@@ -60,8 +60,8 @@ static bool tick(float ms) {
   static ptrdiff_t point_index = -1;
   static ptrdiff_t redo_point_index = -1;
 
-  float x = window_to_entity(screen_x_to_z0(window.mouse_x));
-  float y = window_to_entity(screen_y_to_z0(window.mouse_y));
+  float x = screen_to_entity(screen_x_to_z0(window.mouse_x));
+  float y = screen_to_entity(screen_y_to_z0(window.mouse_y));
 
   float grid_snap = screen_to_z0(window.keys[KEY_LCTRL] ? 10 : window.keys[KEY_LALT] ? 0.01 : 2);
   float angle_snap = window.keys[KEY_LALT] ? M_PI/16 : M_PI/4;
@@ -103,7 +103,7 @@ static bool tick(float ms) {
       if (validate_polygon(&poly)) {
         Color color = { rand() / (float) RAND_MAX, rand() / (float) RAND_MAX, rand() / (float) RAND_MAX };
         g_polygons[++g_polygon_index] = create_entity((Entity){ .poly = poly, .color = color });
-        attach_body(g_polygons[g_polygon_index], false);
+        // attach_body(g_polygons[g_polygon_index], false);
       } else {
         free_polygon(&poly);
       }

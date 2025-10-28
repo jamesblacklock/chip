@@ -18,8 +18,11 @@ void window_resized(uint32_t width, uint32_t height) {
   surface_dimensions_changed(width, height);
 }
 
-void set_key_state(size_t key, bool state) {
-  window.keys[key] = state;
+void set_key_state(size_t key, bool state, bool repeat) {
+  if (!repeat) {
+    window.keys[key] = state;
+  }
+  window.keys_repeating[key] = state ? window.keys_repeating[key] + 1 : 0;
 }
 
 void set_mouse_state(float x, float y, bool l, bool r, bool m) {
@@ -47,7 +50,11 @@ bool mouse_pressed(uint32_t button) {
 }
 
 bool key_pressed(uint32_t key) {
-  return !window.last_frame_keys[key] && window.keys[key];
+  return window.last_frame_keys[key] == 0 && window.keys[key];
+}
+
+bool key_pressed_repeating(uint32_t key) {
+  return window.last_frame_keys[key] < window.keys_repeating[key];
 }
 
 bool drag_delta(float* x, float* y, uint32_t button) {

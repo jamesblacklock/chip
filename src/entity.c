@@ -16,9 +16,6 @@ b2WorldId world;
 void init_entities() {
   Entity_FreelistInit(1000);
   update_pixart_unit();
-  b2WorldDef worldDef = b2DefaultWorldDef();
-  worldDef.gravity = (b2Vec2){0.0f, 100.0f};
-  world = b2CreateWorld(&worldDef);
 }
 
 void update_pixart_unit() {
@@ -26,6 +23,7 @@ void update_pixart_unit() {
 }
 
 void visit_entities(void (*visitor)(Entity*, void*), void* data) {
+  size_t count = 0;
   for (size_t i=1; i <= Entity_FreelistSize; i++) {
     size_t r = Entity_FreelistSize - i;
     if (Entity_FreelistHeap[r].free) {
@@ -35,7 +33,7 @@ void visit_entities(void (*visitor)(Entity*, void*), void* data) {
   }
 }
 
-float window_to_entity(float n) {
+float screen_to_entity(float n) {
   return n / entity_globals.pixart_unit;
 }
 
@@ -54,94 +52,45 @@ void free_entity(Entity* entity) {
   Entity_FreelistFree(entity);
 }
 
-void attach_body(Entity* entity, bool dynamic) {
-  if (B2_IS_NON_NULL(entity->body)) {
-    return;
-  }
-
-  b2BodyDef bodyDef = b2DefaultBodyDef();
-  bodyDef.type = dynamic ? b2_dynamicBody : b2_staticBody;
-  bodyDef.position = (b2Vec2){entity->x+0.1, entity->y};
-  // bodyDef.motionLocks = (b2MotionLocks){ .angularZ = true };
-  entity->body = b2CreateBody(world, &bodyDef);
-
-  if (entity->poly.points) {
-    size_t poly_count;
-    Polygon* convexes = partition_convex(&entity->poly, &poly_count);
-    for (size_t i=0; i < poly_count; i++) {
-      b2ShapeDef shapeDef = b2DefaultShapeDef();
-      shapeDef.density = 1.0f;
-      shapeDef.material.friction = 1;
-      shapeDef.material.restitution = 0;
-      b2Hull hull = b2ComputeHull((b2Vec2*)convexes[i].points, convexes[i].count);
-      if (!b2ValidateHull(&hull)) {
-        printf("failed to validate hull\n");
-        continue;
-      }
-      b2Polygon box = b2MakePolygon(&hull, 1);
-      b2CreatePolygonShape(entity->body, &shapeDef, &box);
-    }
-  } else {
-    b2ShapeDef shapeDef = b2DefaultShapeDef();
-    shapeDef.density = 1.0f;
-    shapeDef.material.friction = 1;
-    shapeDef.material.restitution = 0;
-    b2Polygon box = b2MakeBox(entity->w/2, entity->h/2);
-    b2CreatePolygonShape(entity->body, &shapeDef, &box);
-  }
-}
-
 static void render_entity(Entity* entity, void* _data) {
   if (!entity->enabled) {
     return;
   }
   if (entity->poly.points != NULL) {
     draw_polygon(&entity->poly, entity->color.r, entity->color.g, entity->color.b);
-  } else {
-    draw_quad((QuadData){
-      .x = entity_to_screen(entity->x),
-      .y = entity_to_screen(entity->y),
-      .w = entity_to_screen(entity->w),
-      .h = entity_to_screen(entity->h),
-      .angle = entity->angle,
-      .r = entity->color.r,
-      .g = entity->color.g,
-      .b = entity->color.b,
-    });
   }
 }
 
 void enable_entity(Entity* entity) {
   entity->enabled = true;
-  if (B2_IS_NON_NULL(entity->body)) {
-    b2Body_Disable(entity->body);
-  }
 }
 void disable_entity(Entity* entity) {
   entity->enabled = false;
-  if (B2_IS_NON_NULL(entity->body)) {
-    b2Body_Enable(entity->body);
-  }
 }
 
 void render_entities() {
   visit_entities(render_entity, NULL);
 }
 
-static void update_entity(Entity* entity, void* _data) {
-  if (B2_IS_NULL(entity->body) || !b2Body_IsValid(entity->body)) {
+static void update_entity(Entity* entity, void* _ms) {
+  if (!entity->dynamic) {
     return;
   }
 
-  b2Vec2 pos = b2Body_GetPosition(entity->body);
-  entity->x = pos.x;
-  entity->y = pos.y;
-  entity->angle = b2Rot_GetAngle(b2Body_GetRotation(entity->body));
+  float ms = *(float*) _ms;
+  float gravity = 15;
+  if (entity->velocity.y < gravity) {
+    entity->velocity.y = fmin(gravity, entity->velocity.y + ms / 100);
+  }
+  move_entity(entity, entity->velocity.x, entity->velocity.y);
+  if (entity->collision.pi.intersects) {
+    entity->velocity.x = 0;
+    entity->velocity.y = 0;
+  }
 }
 
-void update_entities() {
-  b2World_Step(world, 1.0/60.0, 10);
-  visit_entities(update_entity, NULL);
+void update_entities(float ms) {
+  visit_entities(update_entity, &ms);
 }
 
 bool save_map_file(const char* filename, Map* map) {
@@ -168,7 +117,6 @@ Map load_map_file(const char* filename) {
     if (validate_polygon(poly)) {
       Color color = { rand() / (float) RAND_MAX, rand() / (float) RAND_MAX, rand() / (float) RAND_MAX };
       entities[entity_count] = create_entity((Entity){ .poly = *poly, .color = color });
-      attach_body(entities[entity_count], false);
       entity_count++;
     }
     free(poly);
@@ -185,4 +133,99 @@ void free_map(Map* map) {
       free_entity(map->polygons[i]);
     }
   }
+}
+
+typedef struct SubjectEntityInfo {
+  float vx;
+  float vy;
+  Entity* subject;
+} SubjectEntityInfo;
+
+void collide_entities(Entity* entity, void* _info) {
+  SubjectEntityInfo* info = _info;
+  if (!entity->poly.count) {
+    printf("we need a polygon for collision!!\n");
+    return;
+  }
+  if (entity == info->subject) {
+    return;
+  }
+
+  Polygon* entity_poly = &entity->poly;
+  Polygon* subject_poly = &info->subject->poly;
+  float ox = subject_poly->ox;
+  float oy = subject_poly->oy;
+  find_bounds(subject_poly, false);
+  float p = 1 - 1 / (subject_poly->max_y - subject_poly->min_y);
+  subject_poly->ox = info->subject->poly.ox + info->vx;
+  subject_poly->oy = info->subject->poly.oy + info->vy;
+  PolygonIntersection m = polygon_intersection(entity_poly, subject_poly);
+
+  if (m.intersects) {
+    float ceiling = 1;
+    float floor = 0;
+    float fac = 0.5;
+    float vx = info->vx;
+    float vy = info->vy;
+    while (ceiling - floor > 0.01) {
+      subject_poly->ox -= vx;
+      subject_poly->oy -= vy;
+      vx = info->vx * fac;
+      vy = info->vy * fac;
+      subject_poly->ox += vx;
+      subject_poly->oy += vy;
+      m = polygon_intersection(entity_poly, subject_poly);
+      info->subject->collision.pi = m;
+      if (!m.intersects) {
+        floor = fac;
+      } else {
+        ceiling = fac;
+      }
+      fac = floor + (ceiling - floor)/2;
+    }
+    info->vx = vx;
+    info->vy = vy;
+  }
+  subject_poly->ox = ox;
+  subject_poly->oy = oy;
+}
+
+void move_entity(Entity* entity, float x, float y) {
+  SubjectEntityInfo info = { .subject = entity, .vx = x, .vy = y };
+
+  if (!entity->poly.count) {
+    printf("we need a polygon for collision!!\n");
+    return;
+  }
+  if (fabs(x) < 0.01) {
+    x = 0;
+    if (fabs(y) < 0.01 && !window.keys[KEY_SPACE]) {
+      return;
+    }
+  } else if (fabs(y) < 0.01) {
+    y = 0;
+  }
+
+  entity->collision.pi.intersects = false;
+  visit_entities(collide_entities, &info);
+
+  if (fabs(info.vx) >= 0.25) {
+    entity->poly.ox += info.vx;
+  }
+  if (fabs(info.vy) >= 0.25) {
+    entity->poly.oy += info.vy;
+  }
+}
+
+void snap_entity_to_surface(Entity* subject, Entity* target, size_t subject_point, size_t target_edge) {
+  float tx1 = target->poly.points[target_edge].x + target->poly.ox;
+  float ty1 = target->poly.points[target_edge].y + target->poly.oy;
+  float tx2 = target->poly.points[(target_edge + 1) % target->poly.count].x + target->poly.ox;
+  float ty2 = target->poly.points[(target_edge + 1) % target->poly.count].y + target->poly.oy;
+  float tx = tx2-tx1;
+  float ty = ty2-ty1;
+  float slope = ty/tx;
+  float intercept = ty1 - slope * tx1;
+  float subject_y = (subject->poly.points[subject_point].x + subject->poly.ox) * slope + intercept;
+  subject->poly.oy = subject_y - subject->poly.points[subject_point].y;
 }

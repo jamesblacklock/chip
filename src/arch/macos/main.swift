@@ -7,66 +7,65 @@ func initWrapper(_ appPath: String, _ vkInst: VkInstance, _ vkSurface: VkSurface
 }
 
 func handleKey(_ event: NSEvent) {
-  if event.isARepeat { return }
   let keyDown = event.type == .keyDown
   // print("macOS code:", event.keyCode)
   // print("ascii:", event.characters?.first?.asciiValue ?? "")
   // print("keyDown:", keyDown)
   switch event.keyCode {
-    case 29: set_key_state(Int(KEY_0), keyDown)
-    case 18: set_key_state(Int(KEY_1), keyDown)
-    case 19: set_key_state(Int(KEY_2), keyDown)
-    case 20: set_key_state(Int(KEY_3), keyDown)
-    case 21: set_key_state(Int(KEY_4), keyDown)
-    case 23: set_key_state(Int(KEY_5), keyDown)
-    case 22: set_key_state(Int(KEY_6), keyDown)
-    case 26: set_key_state(Int(KEY_7), keyDown)
-    case 28: set_key_state(Int(KEY_8), keyDown)
-    case 25: set_key_state(Int(KEY_9), keyDown)
-    case 0: set_key_state(Int(KEY_A), keyDown)
-    case 11: set_key_state(Int(KEY_B), keyDown)
-    case 8: set_key_state(Int(KEY_C), keyDown)
-    case 2: set_key_state(Int(KEY_D), keyDown)
-    case 14: set_key_state(Int(KEY_E), keyDown)
-    case 3: set_key_state(Int(KEY_F), keyDown)
-    case 5: set_key_state(Int(KEY_G), keyDown)
-    case 4: set_key_state(Int(KEY_H), keyDown)
-    case 34: set_key_state(Int(KEY_I), keyDown)
-    case 38: set_key_state(Int(KEY_J), keyDown)
-    case 40: set_key_state(Int(KEY_K), keyDown)
-    case 37: set_key_state(Int(KEY_L), keyDown)
-    case 46: set_key_state(Int(KEY_M), keyDown)
-    case 45: set_key_state(Int(KEY_N), keyDown)
-    case 31: set_key_state(Int(KEY_O), keyDown)
-    case 35: set_key_state(Int(KEY_P), keyDown)
-    case 12: set_key_state(Int(KEY_Q), keyDown)
-    case 15: set_key_state(Int(KEY_R), keyDown)
-    case 1: set_key_state(Int(KEY_S), keyDown)
-    case 17: set_key_state(Int(KEY_T), keyDown)
-    case 32: set_key_state(Int(KEY_U), keyDown)
-    case 9: set_key_state(Int(KEY_V), keyDown)
-    case 13: set_key_state(Int(KEY_W), keyDown)
-    case 7: set_key_state(Int(KEY_X), keyDown)
-    case 16: set_key_state(Int(KEY_Y), keyDown)
-    case 6: set_key_state(Int(KEY_Z), keyDown)
-    case 50: set_key_state(Int(KEY_BACKTICK), keyDown)
-    case 27: set_key_state(Int(KEY_MINUS), keyDown)
-    case 24: set_key_state(Int(KEY_EQUAL), keyDown)
-    case 48: set_key_state(Int(KEY_TAB), keyDown)
-    case 33: set_key_state(Int(KEY_LBRACK), keyDown)
-    case 30: set_key_state(Int(KEY_RBRACK), keyDown)
-    case 42: set_key_state(Int(KEY_BACKSLASH), keyDown)
-    case 43: set_key_state(Int(KEY_COMMA), keyDown)
-    case 47: set_key_state(Int(KEY_DOT), keyDown)
-    case 44: set_key_state(Int(KEY_SLASH), keyDown)
-    case 49: set_key_state(Int(KEY_SPACE), keyDown)
-    case 36: set_key_state(Int(KEY_ENTER), keyDown)
-    case 51: set_key_state(Int(KEY_BSP), keyDown)
-    case 53: set_key_state(Int(KEY_ESC), keyDown)
-    case 123: set_key_state(Int(KEY_LEFT), keyDown)
-    case 124: set_key_state(Int(KEY_RIGHT), keyDown)
-    case 125: set_key_state(Int(KEY_DOWN), keyDown)
-    case 126: set_key_state(Int(KEY_UP), keyDown)
+    case 29: set_key_state(Int(KEY_0), keyDown, event.isARepeat)
+    case 18: set_key_state(Int(KEY_1), keyDown, event.isARepeat)
+    case 19: set_key_state(Int(KEY_2), keyDown, event.isARepeat)
+    case 20: set_key_state(Int(KEY_3), keyDown, event.isARepeat)
+    case 21: set_key_state(Int(KEY_4), keyDown, event.isARepeat)
+    case 23: set_key_state(Int(KEY_5), keyDown, event.isARepeat)
+    case 22: set_key_state(Int(KEY_6), keyDown, event.isARepeat)
+    case 26: set_key_state(Int(KEY_7), keyDown, event.isARepeat)
+    case 28: set_key_state(Int(KEY_8), keyDown, event.isARepeat)
+    case 25: set_key_state(Int(KEY_9), keyDown, event.isARepeat)
+    case 0: set_key_state(Int(KEY_A), keyDown, event.isARepeat)
+    case 11: set_key_state(Int(KEY_B), keyDown, event.isARepeat)
+    case 8: set_key_state(Int(KEY_C), keyDown, event.isARepeat)
+    case 2: set_key_state(Int(KEY_D), keyDown, event.isARepeat)
+    case 14: set_key_state(Int(KEY_E), keyDown, event.isARepeat)
+    case 3: set_key_state(Int(KEY_F), keyDown, event.isARepeat)
+    case 5: set_key_state(Int(KEY_G), keyDown, event.isARepeat)
+    case 4: set_key_state(Int(KEY_H), keyDown, event.isARepeat)
+    case 34: set_key_state(Int(KEY_I), keyDown, event.isARepeat)
+    case 38: set_key_state(Int(KEY_J), keyDown, event.isARepeat)
+    case 40: set_key_state(Int(KEY_K), keyDown, event.isARepeat)
+    case 37: set_key_state(Int(KEY_L), keyDown, event.isARepeat)
+    case 46: set_key_state(Int(KEY_M), keyDown, event.isARepeat)
+    case 45: set_key_state(Int(KEY_N), keyDown, event.isARepeat)
+    case 31: set_key_state(Int(KEY_O), keyDown, event.isARepeat)
+    case 35: set_key_state(Int(KEY_P), keyDown, event.isARepeat)
+    case 12: set_key_state(Int(KEY_Q), keyDown, event.isARepeat)
+    case 15: set_key_state(Int(KEY_R), keyDown, event.isARepeat)
+    case 1: set_key_state(Int(KEY_S), keyDown, event.isARepeat)
+    case 17: set_key_state(Int(KEY_T), keyDown, event.isARepeat)
+    case 32: set_key_state(Int(KEY_U), keyDown, event.isARepeat)
+    case 9: set_key_state(Int(KEY_V), keyDown, event.isARepeat)
+    case 13: set_key_state(Int(KEY_W), keyDown, event.isARepeat)
+    case 7: set_key_state(Int(KEY_X), keyDown, event.isARepeat)
+    case 16: set_key_state(Int(KEY_Y), keyDown, event.isARepeat)
+    case 6: set_key_state(Int(KEY_Z), keyDown, event.isARepeat)
+    case 50: set_key_state(Int(KEY_BACKTICK), keyDown, event.isARepeat)
+    case 27: set_key_state(Int(KEY_MINUS), keyDown, event.isARepeat)
+    case 24: set_key_state(Int(KEY_EQUAL), keyDown, event.isARepeat)
+    case 48: set_key_state(Int(KEY_TAB), keyDown, event.isARepeat)
+    case 33: set_key_state(Int(KEY_LBRACK), keyDown, event.isARepeat)
+    case 30: set_key_state(Int(KEY_RBRACK), keyDown, event.isARepeat)
+    case 42: set_key_state(Int(KEY_BACKSLASH), keyDown, event.isARepeat)
+    case 43: set_key_state(Int(KEY_COMMA), keyDown, event.isARepeat)
+    case 47: set_key_state(Int(KEY_DOT), keyDown, event.isARepeat)
+    case 44: set_key_state(Int(KEY_SLASH), keyDown, event.isARepeat)
+    case 49: set_key_state(Int(KEY_SPACE), keyDown, event.isARepeat)
+    case 36: set_key_state(Int(KEY_ENTER), keyDown, event.isARepeat)
+    case 51: set_key_state(Int(KEY_BSP), keyDown, event.isARepeat)
+    case 53: set_key_state(Int(KEY_ESC), keyDown, event.isARepeat)
+    case 123: set_key_state(Int(KEY_LEFT), keyDown, event.isARepeat)
+    case 124: set_key_state(Int(KEY_RIGHT), keyDown, event.isARepeat)
+    case 125: set_key_state(Int(KEY_DOWN), keyDown, event.isARepeat)
+    case 126: set_key_state(Int(KEY_UP), keyDown, event.isARepeat)
     default: break;
   }
 }
@@ -107,10 +106,10 @@ class GameView: NSView {
   }
 
   override func scrollWheel(with event: NSEvent) {
-    var x = Float(event.scrollingDeltaX.isNaN ? 0 : event.scrollingDeltaX)
-    var y = Float(event.scrollingDeltaY.isNaN ? 0 : event.scrollingDeltaY)
-    x = -(event.hasPreciseScrollingDeltas ? x : abs(x) / x * 10)
-    y = -(event.hasPreciseScrollingDeltas ? y : abs(y) / y * 10)
+    var x = Float(event.scrollingDeltaX)
+    var y = Float(event.scrollingDeltaY)
+    x = x == 0 ? 0 : -(event.hasPreciseScrollingDeltas ? x : abs(x) / x * 10)
+    y = y == 0 ? 0 : -(event.hasPreciseScrollingDeltas ? y : abs(y) / y * 10)
     set_scroll_state(x, y)
   }
 
@@ -160,32 +159,31 @@ class GameView: NSView {
     handleKey(event)
   }
   override func flagsChanged(with event: NSEvent) {
-    // print(event)
     switch event.keyCode {
       case 56:
         keyLshift = !keyLshift
-        set_key_state(Int(KEY_LSHIFT), keyLshift)
+        set_key_state(Int(KEY_LSHIFT), keyLshift, false)
       case 60:
         keyRshift = !keyRshift
-        set_key_state(Int(KEY_RSHIFT), keyRshift)
+        set_key_state(Int(KEY_RSHIFT), keyRshift, false)
       case 59:
         keyLctrl = !keyLctrl
-        set_key_state(Int(KEY_LCTRL), keyLctrl)
+        set_key_state(Int(KEY_LCTRL), keyLctrl, false)
       case 62:
         keyRctrl = !keyRctrl
-        set_key_state(Int(KEY_RCTRL), keyRctrl)
+        set_key_state(Int(KEY_RCTRL), keyRctrl, false)
       case 55:
         keyLmeta = !keyLmeta
-        set_key_state(Int(KEY_LMETA), keyLmeta)
+        set_key_state(Int(KEY_LMETA), keyLmeta, false)
       case 54:
         keyRmeta = !keyRmeta
-        set_key_state(Int(KEY_RMETA), keyRmeta)
+        set_key_state(Int(KEY_RMETA), keyRmeta, false)
       case 58:
         keyLalt = !keyLalt
-        set_key_state(Int(KEY_LALT), keyLalt)
+        set_key_state(Int(KEY_LALT), keyLalt, false)
       case 61:
         keyRalt = !keyRalt
-        set_key_state(Int(KEY_RALT), keyRalt)
+        set_key_state(Int(KEY_RALT), keyRalt, false)
       default: break;
     }
   }
