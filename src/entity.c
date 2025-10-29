@@ -22,14 +22,16 @@ void update_pixart_unit() {
   entity_globals.pixart_unit = fmax(1, round(sqrt(window.width * window.height) / 548.63467));
 }
 
-void visit_entities(void (*visitor)(Entity*, void*), void* data) {
+void visit_entities(bool (*visitor)(Entity*, void*), void* data) {
   size_t count = 0;
   for (size_t i=1; i <= Entity_FreelistSize; i++) {
     size_t r = Entity_FreelistSize - i;
     if (Entity_FreelistHeap[r].free) {
       continue;
     }
-    visitor(&Entity_FreelistHeap[r].item, data);
+    if (!visitor(&Entity_FreelistHeap[r].item, data)) {
+      break;
+    }
   }
 }
 
@@ -52,13 +54,14 @@ void free_entity(Entity* entity) {
   Entity_FreelistFree(entity);
 }
 
-static void render_entity(Entity* entity, void* _data) {
+static bool render_entity(Entity* entity, void* _data) {
   if (!entity->enabled) {
-    return;
+    return true;
   }
   if (entity->poly.points != NULL) {
     draw_polygon(&entity->poly, entity->color.r, entity->color.g, entity->color.b);
   }
+  return true;
 }
 
 void enable_entity(Entity* entity) {
@@ -72,9 +75,9 @@ void render_entities() {
   visit_entities(render_entity, NULL);
 }
 
-static void update_entity(Entity* entity, void* _ms) {
+static bool update_entity(Entity* entity, void* _ms) {
   if (!entity->dynamic) {
-    return;
+    return true;
   }
 
   float ms = *(float*) _ms;
@@ -87,6 +90,7 @@ static void update_entity(Entity* entity, void* _ms) {
     entity->velocity.x = 0;
     entity->velocity.y = 0;
   }
+  return true;
 }
 
 void update_entities(float ms) {
@@ -141,14 +145,14 @@ typedef struct SubjectEntityInfo {
   Entity* subject;
 } SubjectEntityInfo;
 
-void collide_entities(Entity* entity, void* _info) {
+bool collide_entities(Entity* entity, void* _info) {
   SubjectEntityInfo* info = _info;
   if (!entity->poly.count) {
     printf("we need a polygon for collision!!\n");
-    return;
+    return true;
   }
   if (entity == info->subject) {
-    return;
+    return true;
   }
 
   Polygon* entity_poly = &entity->poly;
@@ -188,6 +192,7 @@ void collide_entities(Entity* entity, void* _info) {
   }
   subject_poly->ox = ox;
   subject_poly->oy = oy;
+  return true;
 }
 
 void move_entity(Entity* entity, float x, float y) {

@@ -41,22 +41,16 @@ static bool map_editor_save() {
 }
 
 static bool tick(float ms) {
+  mouse_viewport();
+
   static bool undo;
   static bool redo;
   static bool save;
   static bool closing;
 
-  static float view_x, view_y, view_z = NEUTRAL_Z_DIST;
-  float drag_view_x, drag_view_y;
-  drag_delta(&drag_view_x, &drag_view_y, MOUSE_MIDDLE);
-  view_x += screen_to_z0(drag_view_x);
-  view_y += screen_to_z0(drag_view_y);
-  view_z += view_z * window.scroll_y_delta / 100;
-  set_view_coords(view_x, view_y, view_z);
-
   const size_t MAX_POINTS = 100;
-  static float points[MAX_POINTS][2];
-  static float current_point[2];
+  static Vec2 points[MAX_POINTS];
+  static Vec2 current_point;
   static ptrdiff_t point_index = -1;
   static ptrdiff_t redo_point_index = -1;
 
@@ -97,8 +91,8 @@ static bool tick(float ms) {
   if (mouse_pressed(MOUSE_LEFT)) {
     if (closing) {
       point_index++;
-      points[point_index][0] = points[0][0];
-      points[point_index][1] = points[0][1];
+      points[point_index].x = points[0].x;
+      points[point_index].y = points[0].y;
       Polygon poly = create_polygon(points, point_index);
       if (validate_polygon(&poly)) {
         Color color = { rand() / (float) RAND_MAX, rand() / (float) RAND_MAX, rand() / (float) RAND_MAX };
@@ -111,18 +105,18 @@ static bool tick(float ms) {
       closing = false;
     } else {
       if (point_index < 0) {
-        points[0][0] = current_point[0] = x;
-        points[0][1] = current_point[1] = y;
+        points[0].x = current_point.x = x;
+        points[0].y = current_point.y = y;
       }
-      float prev_x = points[point_index][0];
-      float prev_y = points[point_index][1];
+      float prev_x = points[point_index].x;
+      float prev_y = points[point_index].y;
       float dx = x - prev_x;
       float dy = y - prev_y;
       float dist_xy = sqrt(dx*dx + dy*dy);
       if (dist_xy > 1) {
         point_index++;
-        points[point_index][0] = current_point[0];
-        points[point_index][1] = current_point[1];
+        points[point_index].x = current_point.x;
+        points[point_index].y = current_point.y;
       }
     }
     redo_point_index = point_index;
@@ -130,8 +124,8 @@ static bool tick(float ms) {
   }
   if (point_index >= 0) {
     if (window.keys[KEY_LSHIFT]) {
-      float prev_x = points[point_index][0];
-      float prev_y = points[point_index][1];
+      float prev_x = points[point_index].x;
+      float prev_y = points[point_index].y;
       float dx = x - prev_x;
       float dy = y - prev_y;
       float angle = atan(dy/dx);
@@ -146,13 +140,13 @@ static bool tick(float ms) {
     }
 
     float close_dist = screen_to_z0(5);
-    closing = point_index > 1 && !window.keys[KEY_LALT] && fabsf(x - points[0][0]) < close_dist && fabsf(y - points[0][1]) < close_dist;
+    closing = point_index > 1 && !window.keys[KEY_LALT] && fabsf(x - points[0].x) < close_dist && fabsf(y - points[0].y) < close_dist;
     if (closing) {
-      x = points[0][0];
-      y = points[0][1];
+      x = points[0].x;
+      y = points[0].y;
     }
-    current_point[0] = x;
-    current_point[1] = y;
+    current_point.x = x;
+    current_point.y = y;
   }
 
   undo = (window.keys[KEY_LCTRL] || window.keys[KEY_LMETA]) && !window.keys[KEY_LSHIFT] && window.keys[KEY_Z];
@@ -165,19 +159,19 @@ static bool tick(float ms) {
   if (point_index >= 0) {
     for (ptrdiff_t i=0; i < point_index; i++) {
       draw_line((LineData){
-        .x1 = entity_to_screen(points[i][0]),
-        .y1 = entity_to_screen(points[i][1]),
-        .x2 = entity_to_screen(points[i+1][0]),
-        .y2 = entity_to_screen(points[i+1][1]),
+        .x1 = entity_to_screen(points[i].x),
+        .y1 = entity_to_screen(points[i].y),
+        .x2 = entity_to_screen(points[i+1].x),
+        .y2 = entity_to_screen(points[i+1].y),
         .w = screen_to_z0(entity_to_screen(1)),
         .r = 1,
       });
     }
     draw_line((LineData){
-      .x1 = entity_to_screen(points[point_index][0]),
-      .y1 = entity_to_screen(points[point_index][1]),
-      .x2 = entity_to_screen(current_point[0]),
-      .y2 = entity_to_screen(current_point[1]),
+      .x1 = entity_to_screen(points[point_index].x),
+      .y1 = entity_to_screen(points[point_index].y),
+      .x2 = entity_to_screen(current_point.x),
+      .y2 = entity_to_screen(current_point.y),
       .w = screen_to_z0(entity_to_screen(1)),
       .r = 1,
     });

@@ -5,11 +5,6 @@
 
 #include "main.h"
 
-typedef struct Vec2 {
-  double x;
-  double y;
-} Vec2;
-
 typedef struct Manifold
 {
   void* A;
@@ -20,16 +15,26 @@ typedef struct Manifold
   double penetration;
 } Manifold;
 
+typedef struct Edge {
+  float x1;
+  float y1;
+  float x2;
+  float y2;
+  float slope;
+  float intercept;
+  Vec2 midpoint;
+  float angle;
+  float normal;
+} Edge;
+
 typedef struct Polygon {
   SerializableObject __so;
   Vec2* points;
+  Edge* edges;
   size_t count;
   bool attempted_triangles;
   struct Polygon* triangles;
   size_t triangle_count;
-  bool attempted_convexes;
-  struct Polygon* convexes;
-  size_t convex_count;
   float ox;
   float oy;
   float z;
@@ -54,15 +59,21 @@ typedef struct PolygonIntersection {
 
 EXTERN_C Polygon* partition_convex(Polygon* poly, size_t* output_count);
 EXTERN_C Polygon* partition_triangles(Polygon* poly, size_t* output_count);
-EXTERN_C Polygon create_polygon(float points[][2], size_t count);
+EXTERN_C Polygon create_polygon(Vec2* points, size_t count);
 EXTERN_C void free_polygons(Polygon* polys, size_t count);
 EXTERN_C void free_polygon(Polygon* poly);
 EXTERN_C void draw_polygon(Polygon* poly, float r, float g, float b);
 EXTERN_C void draw_point(Vec2 point, float ox, float oy);
 EXTERN_C bool validate_polygon(Polygon* poly);
+EXTERN_C float cross_product(Vec2 a, Vec2 b);
+EXTERN_C float fclamp(float n, float min, float max);
+EXTERN_C bool between(float n, float min, float max);
+EXTERN_C bool points_are_clockwise(Vec2* points, size_t count);
 EXTERN_C PolygonIntersection polygon_intersection(Polygon* poly1, Polygon* poly2);
 EXTERN_C PolygonIntersection polygon_contains_point(Polygon* poly, Vec2 point);
 EXTERN_C void polygon_geometry_changed(Polygon* poly);
+EXTERN_C void polygon_position_changed(Polygon* poly);
 EXTERN_C void find_bounds(Polygon* poly, bool refresh);
+EXTERN_C Edge edge_info(Polygon* poly, size_t edge);
 
 #endif

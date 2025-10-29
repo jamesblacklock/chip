@@ -61,7 +61,7 @@ EXTERN_C void init_entities();
 EXTERN_C void update_pixart_unit();
 EXTERN_C float screen_to_entity(float x);
 EXTERN_C float entity_to_screen(float x);
-EXTERN_C void visit_entities(void (*visitor)(Entity*, void*), void* data);
+EXTERN_C void visit_entities(bool (*visitor)(Entity*, void*), void* data);
 EXTERN_C void render_entities();
 EXTERN_C void update_entities(float ms);
 EXTERN_C void move_entity(Entity* entity, float x, float y);

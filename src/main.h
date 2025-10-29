@@ -24,6 +24,11 @@ typedef struct ExeArgs {
   } play;
 } ExeArgs;
 
+typedef struct Vec2 {
+  float x;
+  float y;
+} Vec2;
+
 typedef struct Program {
   bool (*init)(ExeArgs args);
   bool (*tick)(float ms);
@@ -32,6 +37,7 @@ typedef struct Program {
 bool host_init(int argc, char** argv, const char* app_path0, VkInstance instance, VkSurfaceKHR surface, uint32_t width, uint32_t height);
 bool host_tick(float ms);
 void host_cleanup();
+void mouse_viewport();
 byte* load_app_resource(const char* filename, size_t* size);
 byte* read_file(const char* filename, size_t* size);
 SerializableObject* read_object(FILE* fp);

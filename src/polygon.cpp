@@ -56,36 +56,30 @@ Polygon* partition(Polygon* in_poly, size_t* output_count, bool reverse, void (*
 
 extern "C" {
 
-Polygon create_polygon(float points[][2], size_t count) {
+Polygon create_polygon(Vec2* points, size_t count) {
   Polygon p = {
     .__so.object_type = OBJECT_TYPE_POLYGON,
     .count = count,
     .points = (Vec2*) malloc(sizeof(Vec2) * count),
+    .edges = (Edge*) malloc(sizeof(Edge) * count),
     .triangle_count = 0,
     .triangles = NULL,
     .attempted_triangles = false,
-    .attempted_convexes = false,
     .has_bounds = false,
   };
-  for (size_t i=0; i < count; i++) {
-    p.points[i].x = points[i][0];
-    p.points[i].y = points[i][1];
+  if (points_are_clockwise(points, count)) {
+    for (size_t i=0; i < count; i++) {
+      p.points[i] = points[i];
+      p.points[i] = points[i];
+    }
+  } else {
+    for (size_t i=0; i < count; i++) {
+      p.points[i] = points[count - i - 1];
+      p.points[i] = points[count - i - 1];
+    }
   }
-  return p;
-}
+  polygon_position_changed(&p);
 
-Polygon create_polygon_d(Vec2* points, size_t count) {
-  Polygon p = {
-    .__so.object_type = OBJECT_TYPE_POLYGON,
-    .count = count,
-    .points = (Vec2*) malloc(sizeof(Vec2) * count),
-    .triangle_count = 0,
-    .triangles = NULL,
-    .attempted_triangles = false,
-    .attempted_convexes = false,
-    .has_bounds = false,
-  };
-  memcpy(p.points, points, sizeof(Vec2) * count);
   return p;
 }
 
@@ -112,20 +106,6 @@ void free_polygons(Polygon* polys, size_t count) {
   free(polys);
 }
 
-Polygon* partition_convex(Polygon* poly, size_t* _output_count) {
-  size_t output_count;
-  Polygon* result = partition(poly, &output_count, false, [] (TPPLPartition* part, TPPLPoly* poly, std::list<TPPLPoly>* res) { part->ConvexPartition_OPT(poly, res); });
-  if (result == NULL) {
-    result = partition(poly, &output_count, false, [] (TPPLPartition* part, TPPLPoly* poly, std::list<TPPLPoly>* res) { part->ConvexPartition_HM(poly, res); });
-  }
-  poly->convexes = result;
-  poly->convex_count = output_count;
-  if (_output_count) {
-    *_output_count = output_count;
-  }
-  return result;
-}
-
 Polygon* partition_triangles(Polygon* poly, size_t* output_count) {
   return partition(poly, output_count, false, [] (TPPLPartition* part, TPPLPoly* poly, std::list<TPPLPoly>* res) { part->Triangulate_OPT(poly, res); });
 }
@@ -149,7 +129,15 @@ void draw_points(Polygon* poly) {
   }
 }
 
-void draw_polygon2(Polygon* poly, float r, float g, float b, float angle) {
+float fclamp(float n, float min, float max) {
+  return n > max ? max : n < min ? min : n;
+}
+
+bool between(float n, float min, float max) {
+  return n > max ? false : n < min ? false : true;
+}
+
+void draw_polygon(Polygon* poly, float r, float g, float b) {
   if (!validate_polygon(poly)) {
     fprintf(stderr, "couldn't validate polygon\n");
     return;
@@ -168,13 +156,68 @@ void draw_polygon2(Polygon* poly, float r, float g, float b, float angle) {
       .z = entity_to_screen(poly->z),
       .r = r, .g = g, .b = b,
       .reuse_attrs = i > 0,
-      .angle = angle + poly->angle,
+      .angle = poly->angle,
     });
+  }
+  
+  for (size_t i=0; i < poly->count; i++) {
+    Edge* edge = &poly->edges[i];
+    bool floor = between(edge->normal, M_PI*5/4, M_PI*7/4);
+    draw_line((LineData){
+      .x1 = entity_to_screen(edge->x1),
+      .y1 = entity_to_screen(edge->y1),
+      .x2 = entity_to_screen(edge->x2),
+      .y2 = entity_to_screen(edge->y2),
+      .w = entity_to_screen(2),
+      .r = floor ? 0.f : 1.f,
+      .g = floor ? 1.f : 0.f,
+    });
+    // Vec2 p1 = poly->points[i];
+    // Vec2 p2 = poly->points[(i+1) % poly->count];
+    // draw_point({
+    //   .x = edge->midpoint.x,
+    //   .y = edge->midpoint.y,
+    // }, 0, 0);
+    // draw_line((LineData){
+    //   .x1 = entity_to_screen(edge->midpoint.x),
+    //   .y1 = entity_to_screen(edge->midpoint.y),
+    //   .x2 = entity_to_screen(edge->midpoint.x + cos(edge->normal) * 20),
+    //   .y2 = entity_to_screen(edge->midpoint.y + sin(edge->normal) * 20),
+    //   .w = entity_to_screen(1),
+    //   .r = 1, .g = between(edge->normal, M_PI*5/4, M_PI*7/4) ? 1.f : 0.f,
+    // });
   }
 }
 
-void draw_polygon(Polygon* poly, float r, float g, float b) {
-  draw_polygon2(poly, r, g, b, 0);
+Edge edge_info(Polygon* poly, size_t edge) {
+  Vec2 p1 = poly->points[edge];
+  Vec2 p2 = poly->points[(edge+1) % poly->count];
+  float x1 = p1.x + poly->ox;
+  float y1 = p1.y + poly->oy;
+  float x2 = p2.x + poly->ox;
+  float y2 = p2.y + poly->oy;
+  float rise = y2-y1;
+  float run = x2-x1;
+  float slope = rise/run;
+  float angle = atan(slope);
+  if (p1.x > p2.x) angle += M_PI;
+  if (angle < 0) angle += M_PI*2;
+  float normal = angle - M_PI_2;
+  if (normal < 0) normal += M_PI*2;
+  float intercept = y1 - slope * x1;
+  float midpoint_x = poly->ox + p1.x + (p2.x - p1.x)/2;
+  float midpoint_y = isinf(slope) ? poly->oy + p1.y + (p2.y - p1.y)/2 : slope * midpoint_x + intercept;
+  return {
+    .x1 = x1,
+    .y1 = y1,
+    .x2 = x2,
+    .y2 = y2,
+    .slope = slope,
+    .intercept = intercept,
+    .midpoint = {midpoint_x, midpoint_y},
+    .angle = angle,
+    .normal = normal,
+  };
 }
 
 void polygon_geometry_changed(Polygon* poly) {
@@ -183,6 +226,15 @@ void polygon_geometry_changed(Polygon* poly) {
   poly->triangle_count = 0;
   poly->attempted_triangles = false;
   poly->has_bounds = false;
+  polygon_position_changed(poly);
+}
+
+void polygon_position_changed(Polygon* poly) {
+  for (size_t i=0; i < poly->count; i++) {
+    Vec2 p1 = poly->points[i];
+    Vec2 p2 = poly->points[(i+1) % poly->count];
+    poly->edges[i] = edge_info(poly, i);
+  }
 }
 
 void find_bounds(Polygon* poly, bool refresh) {
@@ -213,7 +265,6 @@ PolygonIntersection polygon_contains_point(Polygon* poly, Vec2 point) {
     vn.x = vn.x + poly->ox;
     vn.y = vn.y + poly->oy;
     if ((vc.y > point.y) != (vn.y > point.y) && (point.x < (vn.x-vc.x)*(point.y-vc.y) / (vn.y-vc.y)+vc.x)) {
-      // printf("%f\n", atan((vn.y-vc.y)/(vn.x-vc.x)) / M_PI / 2 * 360);
       pi.intersects = !pi.intersects;
     }
   }
@@ -239,6 +290,24 @@ PolygonIntersection polygon_intersection(Polygon* poly1, Polygon* poly2) {
     return pi;
   }
   return polygon_intersection_impl(poly2, poly1, poly2->ox, poly2->oy);
+}
+
+float cross_product(Vec2 a, Vec2 b) {
+  return (a.x*b.y) - (a.y*b.x);
+}
+
+bool points_are_clockwise(Vec2* points, size_t count) {
+  size_t a = 0;
+  for (size_t i=1; i < count; i++) {
+    if (points[i].y < points[a].y || (points[i].y == points[a].y && points[i].x > points[a].x)) {
+      a = i;
+    }
+  }
+  size_t b = a == 0 ? count - 1 : a - 1;
+  size_t c = (a + 1) % count;
+  Vec2 ab = {points[b].x-points[a].x, points[b].y-points[a].y};
+  Vec2 ac = {points[c].x-points[a].x, points[c].y-points[a].y};
+  return cross_product(ab, ac) < 0;
 }
 
 

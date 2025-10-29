@@ -202,9 +202,9 @@ SerializableObject* read_object(FILE* fp) {
         return NULL;
       }
       Polygon* polygon = malloc(sizeof(Polygon));
-      float* points = malloc(sizeof(float) * point_count * 2);
-      fread(points, sizeof(float) * 2, point_count, fp);
-      *polygon = create_polygon((void*)points, point_count);
+      Vec2* points = malloc(sizeof(Vec2) * point_count);
+      fread(points, sizeof(Vec2), point_count, fp);
+      *polygon = create_polygon(points, point_count);
       free(points);
       printf("read polygon with %u points\n", point_count);
       return (SerializableObject*) polygon;
@@ -290,20 +290,10 @@ typedef struct Robot {
 } Robot;
 
 struct {
-  Entity* e1;
-  Entity* e2;
   Robot robot;
 } g;
 
 bool test_init(ExeArgs args) {
-  float points1[][2] = {
-    {0, -50}, {80, -80},
-    {80, 80}, {20, 50}, 
-  };
-  g.e1 = create_entity((Entity){
-    .poly = create_polygon(points1, 4),
-    .color = {1,0,0},
-  });
   g.robot = (Robot){
     // .w = 36,
     .h = 60,
@@ -311,16 +301,7 @@ bool test_init(ExeArgs args) {
     .floor_y = -100,
     .foot = {.x1 = -14, .x2 = 18},
   };
-  float points2[][2] = {
-    {-160, -40}, {-60, -55},
-    {-50, 60}, {-150, 65},
-  };
-  g.e2 = create_entity((Entity){
-    .poly = create_polygon(points2, 4),
-    .color = {0,1,0},
-    .dynamic = true,
-  });
-  // load_map_file("map1.map");
+  load_map_file("newmap.map");
   return true;
 }
 
@@ -344,32 +325,29 @@ void render_robot(Robot* robot) {
 }
 
 bool snap_foot_to_surface(Robot* robot, Entity* target, size_t target_edge) {
-  float tx1 = target->poly.points[target_edge].x + target->poly.ox;
-  float ty1 = target->poly.points[target_edge].y + target->poly.oy;
-  float tx2 = target->poly.points[(target_edge + 1) % target->poly.count].x + target->poly.ox;
-  float ty2 = target->poly.points[(target_edge + 1) % target->poly.count].y + target->poly.oy;
-  float tx = tx2-tx1;
-  float ty = ty2-ty1;
-  float slope = ty/tx;
-  float intercept = ty1 - slope * tx1;
+  Edge* edge = &target->poly.edges[target_edge];
+
+  if (!between(edge->normal, M_PI*5/4, M_PI*7/4)) {
+    return false;
+  }
 
   float robot_x = robot->x;
   if (robot->floor.state && robot->floor.entity == target && robot->floor.edge == target_edge) {
-    robot_x = tx1 + robot->floor.x + robot->vx;
+    robot_x = edge->x1 + robot->floor.x + robot->vx;
   }
 
-  float subject_y = robot_x * slope + intercept;
+  float subject_y = robot_x * edge->slope + edge->intercept;
 
   float foot_x1 = robot_x + cos(robot->floor_angle) * robot->foot.x1;
   float foot_x2 = robot_x + cos(robot->floor_angle) * robot->foot.x2;
 
-  if (robot_x + robot->foot.x2 >= tx1 && robot_x + robot->foot.x1 < tx2) {
+  if (robot_x + robot->foot.x2 >= edge->x1 && robot_x + robot->foot.x1 < edge->x2) {
     robot->floor_y = subject_y;
-    robot->target_floor_angle = atan(slope);
+    robot->target_floor_angle = edge->angle;
     robot->floor.state = true;
     robot->floor.entity = target;
     robot->floor.edge = target_edge;
-    robot->floor.x = robot_x - tx1;
+    robot->floor.x = robot_x - edge->x1;
     robot->x = robot_x;
     return true;
   }
@@ -379,12 +357,29 @@ bool snap_foot_to_surface(Robot* robot, Entity* target, size_t target_edge) {
   return false;
 }
 
+static inline float pdist(float angle, float target) {
+  return angle == target ? 0 : angle < target ? target - angle : M_PI*2 - angle + target;
+}
+static inline float ndist(float angle, float target) {
+  return angle == target ? 0 : angle > target ? angle - target : angle + M_PI*2 - target;
+}
+
 void update_robot(Robot* robot, float ms) {
-  if (g.robot.floor_angle < g.robot.target_floor_angle) {
-    g.robot.floor_angle = fmin(g.robot.floor_angle + 0.006 * ms, g.robot.target_floor_angle);
-  } else if (g.robot.floor_angle > g.robot.target_floor_angle) {
-    g.robot.floor_angle = fmax(g.robot.floor_angle - 0.006 * ms, g.robot.target_floor_angle);
+  if (g.robot.floor_angle != g.robot.target_floor_angle) {
+    float positive_dist = pdist(g.robot.floor_angle, g.robot.target_floor_angle);
+    float negative_dist = ndist(g.robot.floor_angle, g.robot.target_floor_angle);
+    float sign = positive_dist - negative_dist < 0 ? 1 : -1;
+    g.robot.floor_angle = g.robot.floor_angle + 0.006 * ms * sign;
+    if (g.robot.floor_angle >= M_PI*2 || g.robot.floor_angle < 0) {
+      g.robot.floor_angle -= M_PI*2 * sign;
+    }
+    positive_dist = pdist(g.robot.floor_angle, g.robot.target_floor_angle);
+    negative_dist = ndist(g.robot.floor_angle, g.robot.target_floor_angle);
+    if (sign != (positive_dist - negative_dist < 0 ? 1 : -1)) {
+      g.robot.floor_angle = g.robot.target_floor_angle;
+    }
   }
+
   robot->floor_y += robot->vy;
   robot->x += robot->vx;
 }
@@ -434,17 +429,36 @@ bool z(float n) {
   return n < 0.0001 && n > -0.0001;
 }
 
+bool select(Entity* entity, void* _selected_entity) {
+  Entity** selected_entity = _selected_entity;
+  Vec2 p = {screen_to_entity(screen_x_to_z0(window.mouse_x)), screen_to_entity(screen_y_to_z0(window.mouse_y))};
+  if (polygon_contains_point(&entity->poly, p).intersects) {
+    *selected_entity = entity;
+    return false;
+  }
+  return true;
+}
+
+bool collide(Entity* entity, void* _ms) {
+  float* ms = _ms;
+  return !collides(&g.robot, entity, *ms);
+}
+
+bool snap(Entity* entity, void* _data) {
+  for (size_t i=0; i < entity->poly.count; i++) {
+    if (snap_foot_to_surface(&g.robot, entity, i)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool test_tick(float ms) {
   mouse_viewport();
 
   static Entity* selected_entity;
   if (window.mouse_buttons[MOUSE_LEFT] && !selected_entity) {
-    Vec2 p = {screen_to_entity(screen_x_to_z0(window.mouse_x)), screen_to_entity(screen_y_to_z0(window.mouse_y))};
-    if (polygon_contains_point(&g.e2->poly, p).intersects) {
-      selected_entity = g.e2;
-    } else if (polygon_contains_point(&g.e1->poly, p).intersects) {
-      selected_entity = g.e1;
-    }
+    visit_entities(select, &selected_entity);
   } else if (!window.mouse_buttons[MOUSE_LEFT]) {
     selected_entity = NULL;
   }
@@ -453,6 +467,7 @@ bool test_tick(float ms) {
   if (selected_entity && drag_delta(&x, &y, MOUSE_LEFT)) {
     selected_entity->poly.ox += screen_to_entity(screen_to_z0(x));
     selected_entity->poly.oy += screen_to_entity(screen_to_z0(y));
+    polygon_position_changed(&selected_entity->poly);
   }
 
   static float q = true;
@@ -490,12 +505,13 @@ bool test_tick(float ms) {
     } else {
       if (!g.robot.floor.state) {
         g.robot.target_floor_angle = 0;
-        g.robot.collided = collides(&g.robot, g.e2, ms) || collides(&g.robot, g.e1, ms);
+        g.robot.collided = false;
+        visit_entities(collide, &ms);
         g.robot.collided && printf("collided!\n");
       }
       if (g.robot.collided || g.robot.floor.state) {
         g.robot.vy = 0;
-        snap_foot_to_surface(&g.robot, g.e2, 0) || /*snap_foot_to_surface(&g.robot, g.e2, 1) || */snap_foot_to_surface(&g.robot, g.e1, 0);
+        visit_entities(snap, NULL);
         g.robot.collided = g.robot.collided && !g.robot.floor.state;
         g.robot.floor.state && printf("snapping to floor\n");
       }
