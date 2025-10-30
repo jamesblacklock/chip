@@ -44,4 +44,20 @@ SerializableObject* read_object(FILE* fp);
 void write_eof(FILE* fp);
 void write_object(void* object, FILE* fp);
 
+static inline float cross_product(Vec2 a, Vec2 b) {
+  return (a.x*b.y) - (a.y*b.x);
+}
+
+static inline float fclamp(float n, float min, float max) {
+  return n > max ? max : n < min ? min : n;
+}
+
+static inline bool z(float n) {
+  return n < 0.0001 && n > -0.0001;
+}
+
+static inline bool between(float n, float min, float max) {
+  return z(n - max) ? true : z(n - min) ? true : n > max ? false : n < min ? false : true;
+}
+
 #endif

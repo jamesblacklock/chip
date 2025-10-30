@@ -25,6 +25,8 @@ typedef struct Edge {
   Vec2 midpoint;
   float angle;
   float normal;
+  struct Edge* prev;
+  struct Edge* next;
 } Edge;
 
 typedef struct Polygon {
@@ -32,18 +34,18 @@ typedef struct Polygon {
   Vec2* points;
   Edge* edges;
   size_t count;
-  bool attempted_triangles;
-  struct Polygon* triangles;
-  size_t triangle_count;
-  float ox;
-  float oy;
+  float x;
+  float y;
   float z;
-  float angle;
-  float min_x;
-  float min_y;
-  float max_x;
-  float max_y;
-  bool has_bounds;
+  // float angle;
+  // float min_x;
+  // float min_y;
+  // float max_x;
+  // float max_y;
+  // bool has_bounds;
+  bool _computed_tris;
+  struct Polygon* _tris;
+  size_t ntris;
 } Polygon;
 
 #ifdef __cplusplus
@@ -57,23 +59,11 @@ typedef struct PolygonIntersection {
   Vec2 point;
 } PolygonIntersection;
 
-EXTERN_C Polygon* partition_convex(Polygon* poly, size_t* output_count);
-EXTERN_C Polygon* partition_triangles(Polygon* poly, size_t* output_count);
-EXTERN_C Polygon create_polygon(Vec2* points, size_t count);
-EXTERN_C void free_polygons(Polygon* polys, size_t count);
-EXTERN_C void free_polygon(Polygon* poly);
-EXTERN_C void draw_polygon(Polygon* poly, float r, float g, float b);
-EXTERN_C void draw_point(Vec2 point, float ox, float oy);
-EXTERN_C bool validate_polygon(Polygon* poly);
-EXTERN_C float cross_product(Vec2 a, Vec2 b);
-EXTERN_C float fclamp(float n, float min, float max);
-EXTERN_C bool between(float n, float min, float max);
-EXTERN_C bool points_are_clockwise(Vec2* points, size_t count);
-EXTERN_C PolygonIntersection polygon_intersection(Polygon* poly1, Polygon* poly2);
-EXTERN_C PolygonIntersection polygon_contains_point(Polygon* poly, Vec2 point);
+EXTERN_C Polygon polygon_new(Vec2* points, size_t count);
+EXTERN_C void polygon_free(Polygon* poly);
+EXTERN_C Polygon* polygon_tris(Polygon* poly);
+EXTERN_C bool polygon_contains_point(Polygon* poly, Vec2 point);
 EXTERN_C void polygon_geometry_changed(Polygon* poly);
 EXTERN_C void polygon_position_changed(Polygon* poly);
-EXTERN_C void find_bounds(Polygon* poly, bool refresh);
-EXTERN_C Edge edge_info(Polygon* poly, size_t edge);
 
 #endif

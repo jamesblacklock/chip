@@ -17,7 +17,7 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "${workspaceFolder}/build/macos/Game.app/Contents/MacOS/game",
-      "args": ["test", "map1.map"],
+      "args": ["mapeditor", "newmap.map"],
       "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
       "environment": [],

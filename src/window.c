@@ -2,7 +2,7 @@
 #include <stdio.h>
 
 #include "window.h"
-#include "entity.h"
+#include "game.h"
 #include "graphics.h"
 
 Window window = {};
