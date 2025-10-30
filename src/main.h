@@ -29,6 +29,12 @@ typedef struct Vec2 {
   float y;
 } Vec2;
 
+typedef struct Color {
+  float r;
+  float g;
+  float b;
+} Color;
+
 typedef struct Program {
   bool (*init)(ExeArgs args);
   bool (*tick)(float ms);

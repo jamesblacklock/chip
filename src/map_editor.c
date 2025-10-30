@@ -15,6 +15,7 @@
 
 static const char* g_filename;
 static Polygon g_polygons[6000];
+static ptrdiff_t g_selected;
 static ptrdiff_t g_polygon_index;
 static ptrdiff_t g_redo_polygon_index;
 
@@ -40,6 +41,21 @@ static bool map_editor_save() {
   return map_save_file(g_filename, &map);
 }
 
+void select_polygon() {
+  if (g_selected) {
+    g_polygons[g_selected].color = (Color){0,0.1,1};
+    g_selected = -1;
+  }
+  for (ptrdiff_t i=0; i <= g_polygon_index; i++) {
+    Vec2 p = {window_to_pixart(screen_x_to_z0(window.mouse_x)), window_to_pixart(screen_y_to_z0(window.mouse_y))};
+    if (polygon_contains_point(&g_polygons[i], p)) {
+      g_selected = i;
+      g_polygons[g_selected].color = (Color){1,0,0};
+      return;
+    }
+  }
+}
+
 static bool tick(float ms) {
   mouse_viewport();
 
@@ -56,6 +72,25 @@ static bool tick(float ms) {
 
   float x = window_to_pixart(screen_x_to_z0(window.mouse_x));
   float y = window_to_pixart(screen_y_to_z0(window.mouse_y));
+
+  if (window.mouse_buttons[MOUSE_RIGHT]) {
+    select_polygon();
+  }
+  if (g_selected >= 0) {
+    if (key_pressed(KEY_DEL) || key_pressed(KEY_BSP)) {
+      polygon_free(&g_polygons[g_selected]);
+      for (size_t i=g_selected; i < g_polygon_index; i++) {
+        g_polygons[i] = g_polygons[i+1];
+      }
+      g_polygon_index--;
+    }
+    float drag_x, drag_y;
+    if (drag_delta(&drag_x, &drag_y, MOUSE_RIGHT)) {
+      g_polygons[g_selected].x += window_to_pixart(screen_to_z0(drag_x));
+      g_polygons[g_selected].y += window_to_pixart(screen_to_z0(drag_y));
+      polygon_position_changed(&g_polygons[g_selected]);
+    }
+  }
 
   float grid_snap = screen_to_z0(window.keys[KEY_LCTRL] ? 10 : window.keys[KEY_LALT] ? 0.01 : 2);
   float angle_snap = window.keys[KEY_LALT] ? M_PI/16 : M_PI/4;
@@ -100,16 +135,18 @@ static bool tick(float ms) {
       if (point_index < 0) {
         points[0].x = current_point.x = x;
         points[0].y = current_point.y = y;
-      }
-      float prev_x = points[point_index].x;
-      float prev_y = points[point_index].y;
-      float dx = x - prev_x;
-      float dy = y - prev_y;
-      float dist_xy = sqrt(dx*dx + dy*dy);
-      if (dist_xy > 1) {
         point_index++;
-        points[point_index].x = current_point.x;
-        points[point_index].y = current_point.y;
+      } else {
+        float prev_x = points[point_index].x;
+        float prev_y = points[point_index].y;
+        float dx = x - prev_x;
+        float dy = y - prev_y;
+        float dist_xy = sqrt(dx*dx + dy*dy);
+        if (dist_xy > 1) {
+          point_index++;
+          points[point_index].x = current_point.x;
+          points[point_index].y = current_point.y;
+        }
       }
     }
     redo_point_index = point_index;

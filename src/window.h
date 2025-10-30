@@ -68,8 +68,9 @@
 #define KEY_RIGHT 210
 #define KEY_DOWN 211
 #define KEY_UP 212
+#define KEY_DEL 213
 
-#define KEY_COUNT 213
+#define KEY_COUNT 214
 
 #define MOUSE_LEFT 0
 #define MOUSE_RIGHT 1

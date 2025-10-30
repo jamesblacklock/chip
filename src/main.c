@@ -22,9 +22,9 @@ ExeArgs process_argv(int argc, char** argv) {
   if (argc < 2) {
     return args;
   }
-  if (strcmp(argv[1], "mapeditor") == 0) {
+  if (strcmp(argv[1], "edit") == 0) {
     if (2 >= argc) {
-      printf("invalid parameters; expected file path following \"mapeditor\"\n");
+      printf("invalid parameters; expected file path following \"edit\"\n");
     }
     program = program_map_editor;
     args.map_editor.filename = argv[2];
@@ -40,7 +40,7 @@ ExeArgs process_argv(int argc, char** argv) {
     program = program_test;
     args.valid = true;
   } else {
-    printf("invalid parameters; valid program selections include:\n- mapeditor\n- play\n");
+    printf("invalid parameters; valid program selections include:\n- edit\n- play\n");
   }
   return args;
 }
@@ -121,6 +121,10 @@ SerializableObject* read_object(FILE* fp) {
   fread(&type, sizeof(int16_t), 1, fp);
   switch (type) {
     case OBJECT_TYPE_POLYGON: {
+      float x, y, z;
+      fread(&x, sizeof(float), 1, fp);
+      fread(&y, sizeof(float), 1, fp);
+      fread(&z, sizeof(float), 1, fp);
       uint16_t point_count;
       fread(&point_count, sizeof(uint16_t), 1, fp);
       if (point_count > 1000) {
@@ -132,6 +136,10 @@ SerializableObject* read_object(FILE* fp) {
       fread(points, sizeof(Vec2), point_count, fp);
       *polygon = polygon_new(points, point_count);
       free(points);
+      polygon->x = x;
+      polygon->y = y;
+      polygon->z = z;
+      polygon_position_changed(polygon);
       printf("read polygon with %u points\n", point_count);
       return (SerializableObject*) polygon;
     }
@@ -158,6 +166,9 @@ void write_object(void* object, FILE* fp) {
   switch (object_->object_type) {
     case OBJECT_TYPE_POLYGON: {
       Polygon* poly = (Polygon*) object;
+      fwrite(&poly->x, sizeof(float), 1, fp);
+      fwrite(&poly->y, sizeof(float), 1, fp);
+      fwrite(&poly->z, sizeof(float), 1, fp);
       uint16_t point_count = poly->count;
       fwrite(&point_count, sizeof(uint16_t), 1, fp);
       fwrite(poly->points, sizeof(Vec2), point_count, fp);

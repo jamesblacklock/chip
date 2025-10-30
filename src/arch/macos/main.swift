@@ -61,6 +61,7 @@ func handleKey(_ event: NSEvent) {
     case 49: set_key_state(Int(KEY_SPACE), keyDown, event.isARepeat)
     case 36: set_key_state(Int(KEY_ENTER), keyDown, event.isARepeat)
     case 51: set_key_state(Int(KEY_BSP), keyDown, event.isARepeat)
+    case 117: set_key_state(Int(KEY_DEL), keyDown, event.isARepeat)
     case 53: set_key_state(Int(KEY_ESC), keyDown, event.isARepeat)
     case 123: set_key_state(Int(KEY_LEFT), keyDown, event.isARepeat)
     case 124: set_key_state(Int(KEY_RIGHT), keyDown, event.isARepeat)

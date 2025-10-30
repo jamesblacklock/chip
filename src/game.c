@@ -26,7 +26,10 @@ void draw_map_poly(Polygon* poly) {
       .x3 = pixart_to_window(tris[i].points[2].x),
       .y3 = pixart_to_window(tris[i].points[2].y),
       .z = pixart_to_window(poly->z),
-      .b = 1, .g = 0.1, .reuse_attrs = i > 0,
+      .r = poly->color.r,
+      .g = poly->color.g,
+      .b = poly->color.b,
+      .reuse_attrs = i > 0,
       // .angle = poly->angle,
     });
   }
@@ -91,7 +94,6 @@ Map map_load_file(const char* filename) {
       continue;
     }
     polys[poly_count++] = *poly;
-    // Color color = { rand() / (float) RAND_MAX, rand() / (float) RAND_MAX, rand() / (float) RAND_MAX };
     poly = (Polygon*) read_object(fp);
   }
   fclose(fp);

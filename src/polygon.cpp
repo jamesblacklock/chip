@@ -77,6 +77,7 @@ Polygon polygon_new(Vec2* points, size_t count) {
     .points = (Vec2*) malloc(sizeof(Vec2) * count),
     .edges = (Edge*) malloc(sizeof(Edge) * count),
     .ntris = 0,
+    .color = {.b = 1, .g = 0.1},
     ._tris = NULL,
     ._computed_tris = false,
     // .has_bounds = false,
@@ -192,7 +193,7 @@ void polygon_position_changed(Polygon* poly) {
 // }
 
 bool polygon_contains_point(Polygon* poly, Vec2 point) {
-  bool intersects;
+  bool intersects = false;
   float f;
   for (size_t i=0; i < poly->count; i++) {
     Vec2 vc = poly->points[i];

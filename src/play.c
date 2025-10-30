@@ -47,7 +47,6 @@ struct {
   Map map;
 } g;
 
-
 static bool init(ExeArgs args) {
   if (access(args.play.mapfile, F_OK) != 0) {
     printf("failed to load map \"%s\"\n", args.play.mapfile);
@@ -238,16 +237,6 @@ static void viewport_box_follow() {
     vy = chip_y + window.height/5;
   }
   set_view_coords(vx, vy, NEUTRAL_Z_DIST);
-}
-
-Polygon* select_polygon() {
-  for (size_t i=0; i < g.map.poly_count; i++) {
-    Vec2 p = {window_to_pixart(screen_x_to_z0(window.mouse_x)), window_to_pixart(screen_y_to_z0(window.mouse_y))};
-    if (polygon_contains_point(&g.map.polys[i], p)) {
-      return &g.map.polys[i];
-    }
-  }
-  return NULL;
 }
 
 bool tick(float ms) {

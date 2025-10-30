@@ -43,6 +43,7 @@ typedef struct Polygon {
   // float max_x;
   // float max_y;
   // bool has_bounds;
+  Color color;
   bool _computed_tris;
   struct Polygon* _tris;
   size_t ntris;
